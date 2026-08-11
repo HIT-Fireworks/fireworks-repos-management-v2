@@ -1,0 +1,3667 @@
+{
+  "schema_version": 1,
+  "description": "HIT 课程资料仓库分组。课程代码保持独立描述，同一资料仓库可以承载多个代码。课程名精确相同自动共仓；名称不同仅由 groups 显式共仓。",
+  "curriculum_identity_sha256": "d9694235378ae34ec6b687a2650d589fb16a144dee510ee3ac48ad4ad0dbd328",
+  "automatic_grouping": "exact-normalized-course-name",
+  "future_changes_require_review": true,
+  "groups": [
+    {
+      "group_id": "advanced-algebra",
+      "repo_id": "22MA22002",
+      "display_name": "高等代数",
+      "course_names": [
+        "高等代数(1)",
+        "高等代数(2)"
+      ],
+      "expected_course_codes": [
+        "22MA22002",
+        "22MA22014",
+        "22MA22014C",
+        "22MA22102C"
+      ],
+      "legacy_units": [
+        "数学学院/专业基础课/高等代数"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "automatic-control-practice",
+      "repo_id": "22AS31104",
+      "display_name": "自动控制实践",
+      "course_names": [
+        "自动控制实践(1)",
+        "自动控制实践(2)"
+      ],
+      "expected_course_codes": [
+        "22AS31104",
+        "22AS31107",
+        "AS32105",
+        "AS32107"
+      ],
+      "legacy_units": [
+        "未来技术学院/【小卫星班】自动控制实践"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "basic-physics-labs",
+      "repo_id": "22PH22002C",
+      "display_name": "基础物理实验",
+      "course_names": [
+        "基础物理实验(1)",
+        "基础物理实验(2)",
+        "基础物理实验(3)",
+        "基础物理实验(4)",
+        "基础物理实验I"
+      ],
+      "expected_course_codes": [
+        "22PH22002C",
+        "22PH22003",
+        "22PH22005C",
+        "22PH22007",
+        "22PH22009",
+        "22PH22010C",
+        "22PH22012C",
+        "22PH22015",
+        "22PH22023"
+      ],
+      "legacy_units": [
+        "实验报告/物理实验报告/基础物理实验报告"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "c-language-programming",
+      "repo_id": "22CS21501",
+      "display_name": "C 语言程序设计",
+      "course_names": [
+        "C语言程序设计A",
+        "C语言程序设计B"
+      ],
+      "expected_course_codes": [
+        "22CS21501",
+        "22CS21502"
+      ],
+      "legacy_units": [
+        "未来技术学院/【未来技术】C语言"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "circuits-and-electronics",
+      "repo_id": "22EE21002",
+      "display_name": "电路类课程",
+      "course_names": [
+        "电路A(1)",
+        "电路A(2)",
+        "电路B",
+        "电路C",
+        "电路E",
+        "电路F",
+        "电路基础A",
+        "电路与电子学",
+        "电路与电子基础",
+        "电工与电子技术A",
+        "电工与电子技术B",
+        "电工与电子技术C",
+        "电工与电子技术D",
+        "电工与电子技术E",
+        "电工与电子技术F",
+        "模拟电子技术基础",
+        "模拟电子技术基础B",
+        "数字电子技术基础A",
+        "数字电子技术基础B",
+        "数字电子技术基础C",
+        "数字逻辑电路与系统",
+        "电子技术A",
+        "电子技术C"
+      ],
+      "expected_course_codes": [
+        "22EE21001",
+        "22EE21002",
+        "22EE22001",
+        "22EE22002",
+        "22EE22003",
+        "22EE22007",
+        "22EE22008F",
+        "22EE22009",
+        "22EE22010",
+        "22EE22011",
+        "22EE22012",
+        "22EE22013",
+        "22EE22014",
+        "22EE22015",
+        "22EE22016",
+        "22EE22017",
+        "22EE22044",
+        "22EE22044C",
+        "22EE22045",
+        "22EE22046",
+        "22EE22047",
+        "22EI22102",
+        "22EI22306",
+        "EE31023"
+      ],
+      "legacy_units": [
+        "【公共课】/【公共课】电路类课程",
+        "薪火笔记社-竞赛/HIT外置/电路与电子C"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "computer-systems-csapp",
+      "repo_id": "22CS22008",
+      "display_name": "计算机系统（CSAPP）",
+      "course_names": [
+        "计算机系统",
+        "计算机系统B"
+      ],
+      "expected_course_codes": [
+        "22CS22008",
+        "22CS31034"
+      ],
+      "legacy_units": [
+        "未来技术学院/【人工智能模块】计算机系统（CSAPP）"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "database-systems",
+      "repo_id": "22CS22013",
+      "display_name": "数据库系统",
+      "course_names": [
+        "数据库系统",
+        "数据库系统及应用"
+      ],
+      "expected_course_codes": [
+        "22CS22013",
+        "22TS21502"
+      ],
+      "legacy_units": [
+        "未来技术学院/【人工智能板块】 数据库前部.pdf"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "electrician-technology",
+      "repo_id": "22EE22005",
+      "display_name": "电工技术",
+      "course_names": [
+        "电工技术A"
+      ],
+      "expected_course_codes": [
+        "22EE22005",
+        "EE31021"
+      ],
+      "legacy_units": [
+        "机电工程学院/电工技术"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "engineering-calculus",
+      "repo_id": "22MA15001",
+      "display_name": "工科数学分析（微积分）",
+      "course_names": [
+        "微积分A(1)",
+        "微积分A(2)",
+        "微积分B(1)",
+        "微积分B(2)",
+        "微积分C(1)",
+        "微积分C(2)",
+        "微积分D(1)",
+        "微积分D(2)",
+        "微积分E(1)",
+        "微积分E(2)",
+        "微积分F(1)",
+        "微积分F(2)"
+      ],
+      "expected_course_codes": [
+        "22MA15001",
+        "22MA15002",
+        "22MA15003",
+        "22MA15004",
+        "22MA15005",
+        "22MA15006",
+        "22MA15007",
+        "22MA15008",
+        "22MA15009",
+        "22MA15010",
+        "22MA15011",
+        "22MA15012",
+        "22MA15040C",
+        "22MA15041C"
+      ],
+      "legacy_units": [
+        "【公共课】/【公共课】工科数学分析（微积分）"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "engineering-drawing",
+      "repo_id": "22ME21004",
+      "display_name": "工程制图",
+      "course_names": [
+        "机械工程制图",
+        "建筑工程制图",
+        "产品工程制图",
+        "工程制图基础A",
+        "工程制图基础B",
+        "工程制图(俄)"
+      ],
+      "expected_course_codes": [
+        "22EN31110C",
+        "22ME21004",
+        "22ME21005",
+        "22ME21008",
+        "22ME22001",
+        "22ME22013"
+      ],
+      "legacy_units": [
+        "【公共课】/【工科公共课】工程制图"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "engineering-optics",
+      "repo_id": "22IS22005",
+      "display_name": "工程光学",
+      "course_names": [
+        "工程光学(1)",
+        "工程光学(2)"
+      ],
+      "expected_course_codes": [
+        "22IS22005",
+        "22IS22005F",
+        "22IS22007",
+        "22IS22007F"
+      ],
+      "legacy_units": [
+        "仪器学院/工程光学"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "functional-analysis",
+      "repo_id": "22MA22010",
+      "display_name": "泛函分析",
+      "course_names": [
+        "泛函分析基础"
+      ],
+      "expected_course_codes": [
+        "22MA22010",
+        "22MA22010C",
+        "22MA22010F"
+      ],
+      "legacy_units": [
+        "数学学院/专业基础课/泛函分析"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "intelligent-control-theory",
+      "repo_id": "22AS31101F",
+      "display_name": "智能控制理论",
+      "course_names": [
+        "智能系统控制理论(1)",
+        "智能系统控制理论(2)"
+      ],
+      "expected_course_codes": [
+        "22AS31101F",
+        "22AS31103F"
+      ],
+      "legacy_units": [
+        "未来技术学院/【小卫星班】智能控制理论"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "laser-principles",
+      "repo_id": "22AS31701",
+      "display_name": "激光原理",
+      "course_names": [
+        "激光原理A",
+        "激光原理B",
+        "激光原理与技术",
+        "激光原理与技术(1)",
+        "激光原理与技术(2)"
+      ],
+      "expected_course_codes": [
+        "22AS31701",
+        "22AS31791",
+        "22PH31004F",
+        "22PH31005C",
+        "22PH31007",
+        "22PH31008C"
+      ],
+      "legacy_units": [
+        "物理学院/细分专业课/光学/激光原理",
+        "薪火笔记社-竞赛/HIT外置/激光原理"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "linear-algebra-geometry",
+      "repo_id": "22MA15017",
+      "display_name": "线性代数与空间解析几何",
+      "course_names": [
+        "代数与几何B",
+        "代数与几何C",
+        "代数与几何D",
+        "代数与几何E",
+        "代数与几何F",
+        "代数与几何H",
+        "代数与几何P",
+        "代数与几何x"
+      ],
+      "expected_course_codes": [
+        "22MA15017",
+        "22MA15018",
+        "22MA15019",
+        "22MA15020",
+        "22MA15021",
+        "22MA15022",
+        "22MA15023",
+        "22MA15038C",
+        "22MA15042C"
+      ],
+      "legacy_units": [
+        "【公共课】/【公共课】线性代数与空间解析几何"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "mathematical-analysis",
+      "repo_id": "22MA15015",
+      "display_name": "数学分析",
+      "course_names": [
+        "数学分析(1)",
+        "数学分析(2)",
+        "数学分析(3)"
+      ],
+      "expected_course_codes": [
+        "22MA15015",
+        "22MA15016",
+        "22MA15034C",
+        "22MA15039C",
+        "22MA22001",
+        "22MA22006",
+        "22MA22006C",
+        "22MA22013",
+        "22MA22013C",
+        "22MA22101C"
+      ],
+      "legacy_units": [
+        "数学学院/专业基础课/数学分析"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "name-family-0097ebc26a1f26de",
+      "repo_id": "22EI31320",
+      "display_name": "测量学",
+      "course_names": [
+        "测量学",
+        "测量学A",
+        "测量学C",
+        "测量学D"
+      ],
+      "expected_course_codes": [
+        "22EI31320",
+        "22TS21601",
+        "22TS21605",
+        "22TS21607"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-02d9546d425419b3",
+      "repo_id": "22AS31804",
+      "display_name": "基于Verilog的数字系统设计",
+      "course_names": [
+        "基于Verilog的数字系统设计",
+        "基于Verilog的数字系统设计B"
+      ],
+      "expected_course_codes": [
+        "22AS31804",
+        "22AS31808",
+        "AS32808"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-08c82634f0e2f2c3",
+      "repo_id": "22AS22101F",
+      "display_name": "智能信号检测与处理",
+      "course_names": [
+        "智能信号检测与处理(1)",
+        "智能信号检测与处理(2)"
+      ],
+      "expected_course_codes": [
+        "22AS22101F",
+        "22AS22102F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-097ed3588e9b8ff2",
+      "repo_id": "22FL31216",
+      "display_name": "科技俄语阅读",
+      "course_names": [
+        "科技俄语阅读(1)",
+        "科技俄语阅读(2)"
+      ],
+      "expected_course_codes": [
+        "22FL31216",
+        "22FL31221"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-0e890247ac02e0e0",
+      "repo_id": "22ME33301",
+      "display_name": "专业实践",
+      "course_names": [
+        "专业实践(1)",
+        "专业实践(2)",
+        "专业实践(3)"
+      ],
+      "expected_course_codes": [
+        "22ME33301",
+        "22ME33302",
+        "22ME33303"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-0f49612b9dab59ee",
+      "repo_id": "22EN31042",
+      "display_name": "环境科学综合实验",
+      "course_names": [
+        "环境科学综合实验I",
+        "环境科学综合实验II"
+      ],
+      "expected_course_codes": [
+        "22EN31042",
+        "22EN31043"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1067119e15b0e346",
+      "repo_id": "22MS31603",
+      "display_name": "半导体器件物理",
+      "course_names": [
+        "半导体器件物理",
+        "半导体器件物理A",
+        "半导体器件物理B"
+      ],
+      "expected_course_codes": [
+        "22MS31603",
+        "22MS31804B",
+        "22MS31804F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-10aaa0bbde74f841",
+      "repo_id": "22TS31101",
+      "display_name": "路基路面工程",
+      "course_names": [
+        "路基路面工程(1)",
+        "路基路面工程(2)",
+        "路基路面工程A",
+        "路基路面工程B"
+      ],
+      "expected_course_codes": [
+        "22TS31101",
+        "22TS31102",
+        "22TS31106",
+        "22TS31107",
+        "22TS46104"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1238181a4c78b395",
+      "repo_id": "22EE31001",
+      "display_name": "嵌入式系统原理及应用",
+      "course_names": [
+        "嵌入式系统原理及应用",
+        "嵌入式系统原理及应用B"
+      ],
+      "expected_course_codes": [
+        "22EE31001",
+        "22EE31010"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-12da4daaa6c71af3",
+      "repo_id": "22AS22254F",
+      "display_name": "弹性力学",
+      "course_names": [
+        "弹性力学",
+        "弹性力学B"
+      ],
+      "expected_course_codes": [
+        "22AS22254F",
+        "22CE31011"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-13d4c5857d1893cb",
+      "repo_id": "22AS22011",
+      "display_name": "自动控制原理",
+      "course_names": [
+        "自动控制原理B",
+        "自动控制原理C",
+        "自动控制原理D"
+      ],
+      "expected_course_codes": [
+        "22AS22011",
+        "22AS22012",
+        "22AS22013",
+        "22ES22020"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-13def847f79f8fc9",
+      "repo_id": "22FL22130",
+      "display_name": "基础英语",
+      "course_names": [
+        "基础英语(1)",
+        "基础英语(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22130",
+        "22FL22131"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-143f286c8092b0e8",
+      "repo_id": "22ME22009",
+      "display_name": "工程训练(制造工艺实习)",
+      "course_names": [
+        "工程训练(制造工艺实习)A",
+        "工程训练(制造工艺实习)B"
+      ],
+      "expected_course_codes": [
+        "22ME22009",
+        "22ME22010"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-14d0520a21b042e1",
+      "repo_id": "22CC22005F",
+      "display_name": "有机化学",
+      "course_names": [
+        "有机化学",
+        "有机化学A",
+        "有机化学A(1)",
+        "有机化学A(2)",
+        "有机化学B",
+        "有机化学B(1)",
+        "有机化学B(2)"
+      ],
+      "expected_course_codes": [
+        "22CC22005F",
+        "22CC22015",
+        "22CC22018",
+        "22CC22023",
+        "22CC22025",
+        "22EN21005",
+        "22EN21007",
+        "22MS31702"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-14ebb9b891d39715",
+      "repo_id": "22HS31204",
+      "display_name": "转轨经济学",
+      "course_names": [
+        "转轨经济学",
+        "转轨经济学A"
+      ],
+      "expected_course_codes": [
+        "22HS31204",
+        "22HS31289"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-14f62cf6d49928c4",
+      "repo_id": "22EN31001",
+      "display_name": "水污染控制工程",
+      "course_names": [
+        "水污染控制工程",
+        "水污染控制工程(1)",
+        "水污染控制工程(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31001",
+        "22EN31002",
+        "22EN31012F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-154da41658accc93",
+      "repo_id": "22ME21001",
+      "display_name": "设计与制造",
+      "course_names": [
+        "设计与制造(1)",
+        "设计与制造(2)",
+        "设计与制造(3)",
+        "设计与制造(4)"
+      ],
+      "expected_course_codes": [
+        "22ME21001",
+        "22ME21002",
+        "22ME22031",
+        "22ME22033"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1550831931320fc0",
+      "repo_id": "22FL22121",
+      "display_name": "英语原著阅读",
+      "course_names": [
+        "英语原著阅读(1)",
+        "英语原著阅读(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22121",
+        "22FL22127"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-15d7ae5e710e73ee",
+      "repo_id": "22EI31103",
+      "display_name": "通信原理",
+      "course_names": [
+        "通信原理A",
+        "通信原理B"
+      ],
+      "expected_course_codes": [
+        "22EI31103",
+        "22EI31104"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-16119ab5a6d594de",
+      "repo_id": "22TS22102",
+      "display_name": "道路勘测设计",
+      "course_names": [
+        "道路勘测设计A",
+        "道路勘测设计B"
+      ],
+      "expected_course_codes": [
+        "22TS22102",
+        "22TS22403"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-16ad66e26e2007ec",
+      "repo_id": "22AR22203F",
+      "display_name": "传热学",
+      "course_names": [
+        "传热学",
+        "传热学D"
+      ],
+      "expected_course_codes": [
+        "22AR22203F",
+        "22AR31203",
+        "22ES22003F",
+        "22ES22014",
+        "22ES22015"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-16f9c13424683420",
+      "repo_id": "22TS31201",
+      "display_name": "结构设计原理(2)",
+      "course_names": [
+        "结构设计原理(2)A",
+        "结构设计原理(2)B"
+      ],
+      "expected_course_codes": [
+        "22TS31201",
+        "22TS31202"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-177b037fd7cb5b27",
+      "repo_id": "22CS31302",
+      "display_name": "软件过程与项目管理",
+      "course_names": [
+        "软件过程与项目管理",
+        "软件过程与项目管理A"
+      ],
+      "expected_course_codes": [
+        "22CS31302",
+        "CS32457"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1851c5a99f2b9d4d",
+      "repo_id": "22EN31022",
+      "display_name": "水质工程原理与系统模拟",
+      "course_names": [
+        "水质工程原理与系统模拟(1)",
+        "水质工程原理与系统模拟(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31022",
+        "22EN31023"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1864f4cf9969a2ff",
+      "repo_id": "22CS22005",
+      "display_name": "算法设计与分析",
+      "course_names": [
+        "算法设计与分析",
+        "算法设计与分析B"
+      ],
+      "expected_course_codes": [
+        "22CS22005",
+        "22CS22033"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-199bca6277bb9c19",
+      "repo_id": "22HS22107",
+      "display_name": "中国社会思想史",
+      "course_names": [
+        "中国社会思想史",
+        "中国社会思想史A"
+      ],
+      "expected_course_codes": [
+        "22HS22107",
+        "22HS31167"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1adea5e4e4709631",
+      "repo_id": "22HS22105",
+      "display_name": "社会工作概论",
+      "course_names": [
+        "社会工作概论",
+        "社会工作概论A"
+      ],
+      "expected_course_codes": [
+        "22HS22105",
+        "22HS31107F",
+        "22HS31161"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1c7f5f767634885f",
+      "repo_id": "22CC32001C",
+      "display_name": "综合俄语",
+      "course_names": [
+        "综合俄语(3)",
+        "综合俄语(4)"
+      ],
+      "expected_course_codes": [
+        "22CC32001C",
+        "22CC32003C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-1ed02672fcefb2b7",
+      "repo_id": "22FL22326",
+      "display_name": "高级日语",
+      "course_names": [
+        "高级日语(1)",
+        "高级日语(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22326",
+        "22FL22327"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-200f02d2238d1e0d",
+      "repo_id": "22TS22105",
+      "display_name": "道路勘测设计实习",
+      "course_names": [
+        "道路勘测设计实习B",
+        "道路勘测设计实习C"
+      ],
+      "expected_course_codes": [
+        "22TS22105",
+        "22TS23403"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-21c48353367aa2ac",
+      "repo_id": "22CE22001",
+      "display_name": "结构力学",
+      "course_names": [
+        "结构力学",
+        "结构力学A(1)",
+        "结构力学A(2)",
+        "结构力学B",
+        "结构力学C"
+      ],
+      "expected_course_codes": [
+        "22CE22001",
+        "22CE22005F",
+        "22CE31009F",
+        "22TS21104",
+        "22TS21105"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-229d7063afa4d96f",
+      "repo_id": "22AS22008",
+      "display_name": "工程力学",
+      "course_names": [
+        "工程力学A",
+        "工程力学B"
+      ],
+      "expected_course_codes": [
+        "22AS22008",
+        "22AS22009"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-233bd797f1d65ac8",
+      "repo_id": "22TS31203",
+      "display_name": "桥梁工程",
+      "course_names": [
+        "桥梁工程A",
+        "桥梁工程B"
+      ],
+      "expected_course_codes": [
+        "22TS31203",
+        "22TS31204"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-237a18743d6dad23",
+      "repo_id": "22EM21902F",
+      "display_name": "微观经济学",
+      "course_names": [
+        "微观经济学",
+        "微观经济学A"
+      ],
+      "expected_course_codes": [
+        "22EM21902F",
+        "22HS22282"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-264f6f5d5a1cfa36",
+      "repo_id": "22EI31203",
+      "display_name": "随机信号分析",
+      "course_names": [
+        "随机信号分析A",
+        "随机信号分析B"
+      ],
+      "expected_course_codes": [
+        "22EI31203",
+        "22EI31204"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-2978494ae9ce9b4d",
+      "repo_id": "22HS22106",
+      "display_name": "社区概论",
+      "course_names": [
+        "社区概论",
+        "社区概论A"
+      ],
+      "expected_course_codes": [
+        "22HS22106",
+        "22HS31166"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-2a4fa65fbd1a31ae",
+      "repo_id": "22HS31207",
+      "display_name": "经济思想史",
+      "course_names": [
+        "经济思想史B",
+        "经济思想史C"
+      ],
+      "expected_course_codes": [
+        "22HS31207",
+        "22HS31288"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-2aa49bbd88f2b1f2",
+      "repo_id": "22HS22305",
+      "display_name": "刑法总论",
+      "course_names": [
+        "刑法总论",
+        "刑法总论B"
+      ],
+      "expected_course_codes": [
+        "22HS22305",
+        "22HS31393"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-35ad86601d9e5835",
+      "repo_id": "22HS22110",
+      "display_name": "社会人类学",
+      "course_names": [
+        "社会人类学",
+        "社会人类学A"
+      ],
+      "expected_course_codes": [
+        "22HS22110",
+        "22HS31164"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-35c066b9e46281c4",
+      "repo_id": "22FL22111",
+      "display_name": "英语名篇阅读",
+      "course_names": [
+        "英语名篇阅读(1)",
+        "英语名篇阅读(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22111",
+        "22FL22122"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-360480034cc3e9d3",
+      "repo_id": "22CS22012",
+      "display_name": "操作系统",
+      "course_names": [
+        "操作系统",
+        "操作系统B"
+      ],
+      "expected_course_codes": [
+        "22CS22012",
+        "22CS22040"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-37766401a1d2bfba",
+      "repo_id": "22FL22701F",
+      "display_name": "基础日语实践",
+      "course_names": [
+        "基础日语实践(1)",
+        "基础日语实践(2)",
+        "基础日语实践(3)"
+      ],
+      "expected_course_codes": [
+        "22FL22701F",
+        "22FL22702F",
+        "22FL22703F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-38746af84ac5ac31",
+      "repo_id": "22CS22011",
+      "display_name": "计算机网络",
+      "course_names": [
+        "计算机网络",
+        "计算机网络B"
+      ],
+      "expected_course_codes": [
+        "22CS22011",
+        "22CS22037",
+        "CS33501"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-39463c48484ed7d7",
+      "repo_id": "22AS31261F",
+      "display_name": "飞行器结构力学",
+      "course_names": [
+        "飞行器结构力学",
+        "飞行器结构力学B"
+      ],
+      "expected_course_codes": [
+        "22AS31261F",
+        "22AS31601"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-394d44c65ee3a99a",
+      "repo_id": "22EE33001",
+      "display_name": "专业综合实践",
+      "course_names": [
+        "专业综合实践I",
+        "专业综合实践II"
+      ],
+      "expected_course_codes": [
+        "22EE33001",
+        "22EE33002"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-3d78f117c64c79f5",
+      "repo_id": "22FL22303",
+      "display_name": "基础日语",
+      "course_names": [
+        "基础日语(1)",
+        "基础日语(3)",
+        "基础日语(4)"
+      ],
+      "expected_course_codes": [
+        "22FL22303",
+        "22FL22304",
+        "22FL22324"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-3e7f9c5016981e94",
+      "repo_id": "22CC22003F",
+      "display_name": "化学基础实验",
+      "course_names": [
+        "化学基础实验",
+        "化学基础实验A",
+        "化学基础实验B",
+        "化学基础实验C",
+        "化学基础实验D"
+      ],
+      "expected_course_codes": [
+        "22CC22003F",
+        "22CC22014",
+        "22CC22019",
+        "22CC22020",
+        "22CC22021"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-408b4a34c1bf01c4",
+      "repo_id": "22TS22201",
+      "display_name": "结构设计原理",
+      "course_names": [
+        "结构设计原理(1)",
+        "结构设计原理(3)"
+      ],
+      "expected_course_codes": [
+        "22TS22201",
+        "22TS31211"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-4104962cadea9565",
+      "repo_id": "22EE22018",
+      "display_name": "电子线路",
+      "course_names": [
+        "电子线路(1)",
+        "电子线路(2)"
+      ],
+      "expected_course_codes": [
+        "22EE22018",
+        "22EE22019"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-461d1ad20c75db29",
+      "repo_id": "22LS22018F",
+      "display_name": "细胞生物学实验",
+      "course_names": [
+        "细胞生物学实验A",
+        "细胞生物学实验B"
+      ],
+      "expected_course_codes": [
+        "22LS22018F",
+        "22LS22020"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-462e8639c39a6a55",
+      "repo_id": "22LS22002",
+      "display_name": "生物学特色实验",
+      "course_names": [
+        "生物学特色实验(1)",
+        "生物学特色实验(2)"
+      ],
+      "expected_course_codes": [
+        "22LS22002",
+        "22LS22002F",
+        "22LS22007",
+        "22LS22007F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-46a793ce01d7a83f",
+      "repo_id": "22CS22004",
+      "display_name": "数据结构与算法",
+      "course_names": [
+        "数据结构与算法",
+        "数据结构与算法A",
+        "数据结构与算法B"
+      ],
+      "expected_course_codes": [
+        "22CS22004",
+        "22CS22004F",
+        "22CS22034",
+        "22TS21501",
+        "22TS22404"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-46f79419661685f3",
+      "repo_id": "22AS33303",
+      "display_name": "认识实习",
+      "course_names": [
+        "认识实习",
+        "认识实习I",
+        "认识实习II"
+      ],
+      "expected_course_codes": [
+        "22AS33303",
+        "22AS33703",
+        "22AS33803",
+        "22AS33902",
+        "22CE33001",
+        "22ES33001",
+        "22ES33002",
+        "22FL33201",
+        "22HS33201",
+        "22HS33362"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-4a453cf363c0ba21",
+      "repo_id": "22AS31307",
+      "display_name": "材料物理性能",
+      "course_names": [
+        "材料物理性能",
+        "材料物理性能A",
+        "材料物理性能B"
+      ],
+      "expected_course_codes": [
+        "22AS31307",
+        "22AS31354F",
+        "22MS31109",
+        "22MS31703"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-4e182ae4924e1dd0",
+      "repo_id": "22CC31003C",
+      "display_name": "俄罗斯概况",
+      "course_names": [
+        "俄罗斯概况",
+        "俄罗斯概况(1)",
+        "俄罗斯概况(2)"
+      ],
+      "expected_course_codes": [
+        "22CC31003C",
+        "22FL31212",
+        "22FL31218",
+        "22PH32003C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-4e848c05146f3547",
+      "repo_id": "22HS22108",
+      "display_name": "发展社会学",
+      "course_names": [
+        "发展社会学",
+        "发展社会学A"
+      ],
+      "expected_course_codes": [
+        "22HS22108",
+        "22HS31269"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-4f3b58cda69fbbe3",
+      "repo_id": "22FL22219",
+      "display_name": "高级俄语",
+      "course_names": [
+        "高级俄语(1)",
+        "高级俄语(2)",
+        "高级俄语(3)"
+      ],
+      "expected_course_codes": [
+        "22FL22219",
+        "22FL22223",
+        "22FL22227"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-52ca0fb7b635934f",
+      "repo_id": "22AS22302",
+      "display_name": "材料科学与工程基础",
+      "course_names": [
+        "材料科学与工程基础",
+        "材料科学与工程基础I",
+        "材料科学与工程基础II"
+      ],
+      "expected_course_codes": [
+        "22AS22302",
+        "22AS31301",
+        "22MS22104",
+        "22MS22104F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-53c0bd38811a6abe",
+      "repo_id": "22ES31302",
+      "display_name": "储能原理",
+      "course_names": [
+        "储能原理I",
+        "储能原理II"
+      ],
+      "expected_course_codes": [
+        "22ES31302",
+        "22ES31303"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-5423d06a0b6c72e0",
+      "repo_id": "22HS22103",
+      "display_name": "社会学概论",
+      "course_names": [
+        "社会学概论",
+        "社会学概论A"
+      ],
+      "expected_course_codes": [
+        "22HS22103",
+        "22HS22161"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-546f38c70435ee03",
+      "repo_id": "22HS22104",
+      "display_name": "现代社会学理论",
+      "course_names": [
+        "现代社会学理论",
+        "现代社会学理论A"
+      ],
+      "expected_course_codes": [
+        "22HS22104",
+        "22HS22164"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-5866c3f8f1fffd7b",
+      "repo_id": "22FL22307",
+      "display_name": "日语视听说",
+      "course_names": [
+        "日语视听说(1)",
+        "日语视听说(2)",
+        "日语视听说(3)",
+        "日语视听说(4)",
+        "日语视听说(5)"
+      ],
+      "expected_course_codes": [
+        "22FL22307",
+        "22FL22308",
+        "22FL22309",
+        "22FL22310",
+        "22FL22328",
+        "22FL22704F",
+        "22FL22705F",
+        "22FL22706F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-588777136edadbd8",
+      "repo_id": "22PH33001C",
+      "display_name": "毕业论文",
+      "course_names": [
+        "毕业论文(1)",
+        "毕业论文(2)"
+      ],
+      "expected_course_codes": [
+        "22PH33001C",
+        "22PH33002C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-58b1c48ff23339c1",
+      "repo_id": "22HS31105",
+      "display_name": "社会心理学基础",
+      "course_names": [
+        "社会心理学基础",
+        "社会心理学基础A"
+      ],
+      "expected_course_codes": [
+        "22HS31105",
+        "22HS31165"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-5961a8455c0580a6",
+      "repo_id": "22EE22031",
+      "display_name": "电路与电子技术实验",
+      "course_names": [
+        "电路与电子技术实验A",
+        "电路与电子技术实验C"
+      ],
+      "expected_course_codes": [
+        "22EE22031",
+        "22EE22048"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-59f49e6869ff7e43",
+      "repo_id": "22ME22011",
+      "display_name": "工程训练(电子工艺实习)",
+      "course_names": [
+        "工程训练(电子工艺实习)",
+        "工程训练(电子工艺实习)B"
+      ],
+      "expected_course_codes": [
+        "22ME22011",
+        "22ME22012"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-5c0e6aa6eb9a2807",
+      "repo_id": "22EM22801",
+      "display_name": "货币银行学",
+      "course_names": [
+        "货币银行学",
+        "货币银行学A",
+        "货币银行学B"
+      ],
+      "expected_course_codes": [
+        "22EM22801",
+        "22EM22801F",
+        "22HS22208",
+        "22HS31255",
+        "22HS31282"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-626a3aa5627e2a69",
+      "repo_id": "22HS22101",
+      "display_name": "社会学研究方法",
+      "course_names": [
+        "社会学研究方法",
+        "社会学研究方法A"
+      ],
+      "expected_course_codes": [
+        "22HS22101",
+        "22HS22162"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-62cfc0da7a31e411",
+      "repo_id": "22EE22037",
+      "display_name": "电子线路实验",
+      "course_names": [
+        "电子线路实验(1)",
+        "电子线路实验(2)"
+      ],
+      "expected_course_codes": [
+        "22EE22037",
+        "22EE22038"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-679bf724ce0766f5",
+      "repo_id": "22CE22008F",
+      "display_name": "运筹学",
+      "course_names": [
+        "运筹学",
+        "运筹学B"
+      ],
+      "expected_course_codes": [
+        "22CE22008F",
+        "22CE31030",
+        "22EM21002",
+        "22EM21002F",
+        "22EM22242",
+        "22ME22401",
+        "22ME22401F",
+        "22TS22405"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-67f940bc16911a21",
+      "repo_id": "22HS31103F",
+      "display_name": "中国当代经济",
+      "course_names": [
+        "中国当代经济",
+        "中国当代经济A"
+      ],
+      "expected_course_codes": [
+        "22HS31103F",
+        "22HS31206",
+        "22HS31287"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-69bdd15b6b47a1c6",
+      "repo_id": "22CC22027",
+      "display_name": "计算化学",
+      "course_names": [
+        "计算化学",
+        "计算化学A",
+        "计算化学B"
+      ],
+      "expected_course_codes": [
+        "22CC22027",
+        "22CC22028",
+        "22CC31022F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-6a561d55cb0e7df1",
+      "repo_id": "22FL31606F",
+      "display_name": "国际经济学",
+      "course_names": [
+        "国际经济学",
+        "国际经济学A"
+      ],
+      "expected_course_codes": [
+        "22FL31606F",
+        "22HS31201B",
+        "22HS31281"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-6a848decc018ecaa",
+      "repo_id": "22EM22602",
+      "display_name": "中级财务会计",
+      "course_names": [
+        "中级财务会计",
+        "中级财务会计A",
+        "中级财务会计B"
+      ],
+      "expected_course_codes": [
+        "22EM22602",
+        "22EM31601F",
+        "22EM31602F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-6b509dcca20ef62c",
+      "repo_id": "22AR22202F",
+      "display_name": "工程热力学",
+      "course_names": [
+        "工程热力学",
+        "工程热力学A",
+        "工程热力学D"
+      ],
+      "expected_course_codes": [
+        "22AR22202F",
+        "22AR31201",
+        "22ES22002F",
+        "22ES22013",
+        "22ES22030",
+        "22ES22032"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-6d0a8ed93152e368",
+      "repo_id": "22FL22208",
+      "display_name": "基础俄语",
+      "course_names": [
+        "基础俄语(1)",
+        "基础俄语(3)",
+        "基础俄语(4)"
+      ],
+      "expected_course_codes": [
+        "22FL22208",
+        "22FL22213",
+        "22FL22232"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7002a4904fa7b842",
+      "repo_id": "22ES22007F",
+      "display_name": "核反应堆热工水力学",
+      "course_names": [
+        "核反应堆热工水力学",
+        "核反应堆热工水力学I"
+      ],
+      "expected_course_codes": [
+        "22ES22007F",
+        "22ES31404"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-716c7eb6f4e4a8bd",
+      "repo_id": "22EN31005F",
+      "display_name": "水工艺设备与控制",
+      "course_names": [
+        "水工艺设备与控制(1)",
+        "水工艺设备与控制(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31005F",
+        "22EN31006F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-72eb1e62b7301e26",
+      "repo_id": "22ES22007",
+      "display_name": "核工程热流基础",
+      "course_names": [
+        "核工程热流基础I",
+        "核工程热流基础II"
+      ],
+      "expected_course_codes": [
+        "22ES22007",
+        "22ES22008"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-75aeee92047d119d",
+      "repo_id": "22PH31001C",
+      "display_name": "等离子体物理",
+      "course_names": [
+        "等离子体物理(1)",
+        "等离子体物理(2)"
+      ],
+      "expected_course_codes": [
+        "22PH31001C",
+        "22PH31002C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7a57461c9862e951",
+      "repo_id": "22ES22004F",
+      "display_name": "燃烧学",
+      "course_names": [
+        "燃烧学",
+        "燃烧学B"
+      ],
+      "expected_course_codes": [
+        "22ES22004F",
+        "22ES22018",
+        "22ES22043"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7a6e59e25aacff3e",
+      "repo_id": "22EN31002C",
+      "display_name": "技术生态学",
+      "course_names": [
+        "技术生态学(1)",
+        "技术生态学(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31002C",
+        "22EN31008C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7b37cbd9fcd9feac",
+      "repo_id": "22TS21606",
+      "display_name": "测量实习",
+      "course_names": [
+        "测量实习B",
+        "测量实习C"
+      ],
+      "expected_course_codes": [
+        "22TS21606",
+        "22TS22604"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7c0776ac4a3ebe78",
+      "repo_id": "22PH31007C",
+      "display_name": "专业物理实验",
+      "course_names": [
+        "专业物理实验(1)",
+        "专业物理实验(2)",
+        "专业物理实验(3)",
+        "专业物理实验(4)"
+      ],
+      "expected_course_codes": [
+        "22PH31007C",
+        "22PH31009C",
+        "22PH31014C",
+        "22PH31015C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7c59cfc2fa2b2c84",
+      "repo_id": "22FL22209",
+      "display_name": "俄语视听说",
+      "course_names": [
+        "俄语视听说(1)",
+        "俄语视听说(2)",
+        "俄语视听说(3)",
+        "俄语视听说(4)"
+      ],
+      "expected_course_codes": [
+        "22FL22209",
+        "22FL22214",
+        "22FL22220",
+        "22FL22221"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7d7034725eb22a4c",
+      "repo_id": "22FL22412",
+      "display_name": "法语视听说",
+      "course_names": [
+        "法语视听说(1)",
+        "法语视听说(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22412",
+        "22FL22413"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7e07b665573015cb",
+      "repo_id": "22PH22004",
+      "display_name": "电磁学",
+      "course_names": [
+        "电磁学",
+        "电磁学(1)",
+        "电磁学(2)"
+      ],
+      "expected_course_codes": [
+        "22PH22004",
+        "22PH22004C",
+        "22PH22008C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7e0fd6bbbaf2c179",
+      "repo_id": "22CS22019",
+      "display_name": "软件构造",
+      "course_names": [
+        "软件构造",
+        "软件构造A"
+      ],
+      "expected_course_codes": [
+        "22CS22019",
+        "CS32123"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7e16f36a1c359519",
+      "repo_id": "22CC22004C",
+      "display_name": "物理化学",
+      "course_names": [
+        "物理化学",
+        "物理化学A(1)",
+        "物理化学A(2)",
+        "物理化学B(1)",
+        "物理化学B(2)",
+        "物理化学C"
+      ],
+      "expected_course_codes": [
+        "22CC22004C",
+        "22CC22004F",
+        "22CC22016",
+        "22CC22017",
+        "22CC22024",
+        "22CC22026",
+        "22CC31035",
+        "22EN22021",
+        "22LS31013",
+        "22TS31301"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-7f4fce80b0cf35a5",
+      "repo_id": "22AS22701",
+      "display_name": "原子物理",
+      "course_names": [
+        "原子物理",
+        "原子物理(1)",
+        "原子物理(2)"
+      ],
+      "expected_course_codes": [
+        "22AS22701",
+        "22PH22001F",
+        "22PH22015C",
+        "22PH22016C",
+        "22PH22020"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-85c6edc0e1043665",
+      "repo_id": "22EN31006",
+      "display_name": "环境影响评价与规划管理",
+      "course_names": [
+        "环境影响评价与规划管理A",
+        "环境影响评价与规划管理B"
+      ],
+      "expected_course_codes": [
+        "22EN31006",
+        "22EN31008"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-8623b6265ba3f483",
+      "repo_id": "22MS22111F",
+      "display_name": "材料力学性能",
+      "course_names": [
+        "材料力学性能",
+        "材料力学性能A"
+      ],
+      "expected_course_codes": [
+        "22MS22111F",
+        "22MS31111"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-88c19a9b240e0361",
+      "repo_id": "22TS31206",
+      "display_name": "桥梁基础工程",
+      "course_names": [
+        "桥梁基础工程A",
+        "桥梁基础工程B"
+      ],
+      "expected_course_codes": [
+        "22TS31206",
+        "22TS31207"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-8929c9798e94aef8",
+      "repo_id": "22EM22901F",
+      "display_name": "计量经济学",
+      "course_names": [
+        "计量经济学",
+        "计量经济学A"
+      ],
+      "expected_course_codes": [
+        "22EM22901F",
+        "22EM22902",
+        "22HS22284"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-8afceb8dc075b209",
+      "repo_id": "22PH22002F",
+      "display_name": "电动力学",
+      "course_names": [
+        "电动力学",
+        "电动力学A",
+        "电动力学B"
+      ],
+      "expected_course_codes": [
+        "22PH22002F",
+        "22PH22013",
+        "22PH22017C",
+        "22PH31001"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-8e4cbbe26a70a628",
+      "repo_id": "22EN21004",
+      "display_name": "水化学",
+      "course_names": [
+        "水化学",
+        "水化学(1)",
+        "水化学(2)"
+      ],
+      "expected_course_codes": [
+        "22EN21004",
+        "22EN22001F",
+        "22EN22002F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-8f520fb3fbfcd4d7",
+      "repo_id": "22EE22029",
+      "display_name": "电工与电子技术实验",
+      "course_names": [
+        "电工与电子技术实验A",
+        "电工与电子技术实验B",
+        "电工与电子技术实验E",
+        "电工与电子技术实验F"
+      ],
+      "expected_course_codes": [
+        "22EE22029",
+        "22EE22030",
+        "22EE22033",
+        "22EE22045C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-91b912cade3ba3f3",
+      "repo_id": "22EN31015C",
+      "display_name": "经济学",
+      "course_names": [
+        "经济学(1)",
+        "经济学(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31015C",
+        "22EN31021C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-93bce178642a21ec",
+      "repo_id": "22CC15006",
+      "display_name": "有机化学实验",
+      "course_names": [
+        "有机化学实验",
+        "有机化学实验B",
+        "有机化学实验D"
+      ],
+      "expected_course_codes": [
+        "22CC15006",
+        "22CC22006C",
+        "CC31018"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-94e9241f6a514ca9",
+      "repo_id": "22CS22018",
+      "display_name": "Python程序设计",
+      "course_names": [
+        "Python程序设计",
+        "Python程序设计C"
+      ],
+      "expected_course_codes": [
+        "22CS22018",
+        "22CS22030",
+        "22EM22003",
+        "22EM22344F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-963b0a51a404b958",
+      "repo_id": "22CE33010",
+      "display_name": "混凝土结构课程设计",
+      "course_names": [
+        "混凝土结构课程设计A",
+        "混凝土结构课程设计B"
+      ],
+      "expected_course_codes": [
+        "22CE33010",
+        "22CE33018"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-96a79a3fffaa2018",
+      "repo_id": "22EE22003F",
+      "display_name": "电机学",
+      "course_names": [
+        "电机学",
+        "电机学B"
+      ],
+      "expected_course_codes": [
+        "22EE22003F",
+        "22EE31002",
+        "22EE31009"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-983482f84ff2665a",
+      "repo_id": "22HS22109",
+      "display_name": "社会统计学",
+      "course_names": [
+        "社会统计学",
+        "社会统计学A"
+      ],
+      "expected_course_codes": [
+        "22HS22109",
+        "22HS31163"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-985e2fddcff8c65b",
+      "repo_id": "22CC31020",
+      "display_name": "结构化学",
+      "course_names": [
+        "结构化学",
+        "结构化学B"
+      ],
+      "expected_course_codes": [
+        "22CC31020",
+        "22CC31020F",
+        "22CC31025C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9a34c1aa82bc9829",
+      "repo_id": "22ME22003",
+      "display_name": "机械设计基础",
+      "course_names": [
+        "机械设计基础B",
+        "机械设计基础C"
+      ],
+      "expected_course_codes": [
+        "22ME22003",
+        "22ME22004"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9a8d0e4a7e2971c1",
+      "repo_id": "22HS22206",
+      "display_name": "经济学研究方法",
+      "course_names": [
+        "经济学研究方法",
+        "经济学研究方法A"
+      ],
+      "expected_course_codes": [
+        "22HS22206",
+        "22HS22285"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9b4558b47c01c11d",
+      "repo_id": "22AS31102",
+      "display_name": "自动控制理论",
+      "course_names": [
+        "自动控制理论",
+        "自动控制理论(1)",
+        "自动控制理论(2)"
+      ],
+      "expected_course_codes": [
+        "22AS31102",
+        "22AS31103",
+        "22EE22002F",
+        "22EE22043",
+        "AS32104",
+        "AS32106"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9bd08f597fc4e42a",
+      "repo_id": "22MH22005",
+      "display_name": "新医学科学与技术综合实验",
+      "course_names": [
+        "新医学科学与技术综合实验(1)",
+        "新医学科学与技术综合实验(2)"
+      ],
+      "expected_course_codes": [
+        "22MH22005",
+        "22MH22006"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9c60c3fec530cbb2",
+      "repo_id": "22HS22211",
+      "display_name": "世界经济学",
+      "course_names": [
+        "世界经济学",
+        "世界经济学A",
+        "世界经济学B"
+      ],
+      "expected_course_codes": [
+        "22HS22211",
+        "22HS22251",
+        "22HS31284"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9dca50b9bd9478a5",
+      "repo_id": "22MX11006",
+      "display_name": "形势与政策",
+      "course_names": [
+        "形势与政策(1)",
+        "形势与政策(2)",
+        "形势与政策(3)"
+      ],
+      "expected_course_codes": [
+        "22MX11006",
+        "22MX11006C",
+        "22MX11007",
+        "22MX11007C",
+        "22MX11008",
+        "22MX11008C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9e69074a79bfc61a",
+      "repo_id": "22HS22301F",
+      "display_name": "法理学",
+      "course_names": [
+        "法理学",
+        "法理学A"
+      ],
+      "expected_course_codes": [
+        "22HS22301F",
+        "22HS22303",
+        "22HS22390"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-9ec11c7cb75eeb5c",
+      "repo_id": "22CS31203",
+      "display_name": "网络空间安全设计与实践",
+      "course_names": [
+        "网络空间安全设计与实践I",
+        "网络空间安全设计与实践II"
+      ],
+      "expected_course_codes": [
+        "22CS31203",
+        "22CS31204"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-a011cd1fcf15be9b",
+      "repo_id": "22FL31105",
+      "display_name": "跨文化交际",
+      "course_names": [
+        "跨文化交际",
+        "跨文化交际A",
+        "跨文化交际C"
+      ],
+      "expected_course_codes": [
+        "22FL31105",
+        "22FL31139",
+        "22FL31506F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-a025bfb844511dd5",
+      "repo_id": "22HS22212",
+      "display_name": "西方经济学说史",
+      "course_names": [
+        "西方经济学说史",
+        "西方经济学说史A",
+        "西方经济学说史B"
+      ],
+      "expected_course_codes": [
+        "22HS22212",
+        "22HS22253",
+        "22HS31286"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-a0481a1473505ca9",
+      "repo_id": "22CC31002",
+      "display_name": "高分子化学",
+      "course_names": [
+        "高分子化学",
+        "高分子化学A"
+      ],
+      "expected_course_codes": [
+        "22CC31002",
+        "22CC31002F",
+        "22CC31009C",
+        "22MS32128"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-a0552154da1cae11",
+      "repo_id": "22CE31003F",
+      "display_name": "基础工程",
+      "course_names": [
+        "基础工程",
+        "基础工程A",
+        "基础工程B"
+      ],
+      "expected_course_codes": [
+        "22CE31003F",
+        "22CE31004",
+        "22CE31024"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-a429534d7b809050",
+      "repo_id": "22EN31009C",
+      "display_name": "技术安全系统保障",
+      "course_names": [
+        "技术安全系统保障(1)",
+        "技术安全系统保障(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31009C",
+        "22EN31214C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-aad37b3fec84fa85",
+      "repo_id": "22AR22025",
+      "display_name": "流体力学",
+      "course_names": [
+        "流体力学",
+        "流体力学(1)",
+        "流体力学B"
+      ],
+      "expected_course_codes": [
+        "22AR22025",
+        "22AR22201F",
+        "22AR31202",
+        "22EN22016",
+        "22ES22029"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ac29c4ce3facd777",
+      "repo_id": "22CS31153",
+      "display_name": "信息安全设计与实践",
+      "course_names": [
+        "信息安全设计与实践I",
+        "信息安全设计与实践II"
+      ],
+      "expected_course_codes": [
+        "22CS31153",
+        "22CS31154"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-adaea56fdbb4144f",
+      "repo_id": "22AS31255",
+      "display_name": "结构动力学",
+      "course_names": [
+        "结构动力学",
+        "结构动力学A"
+      ],
+      "expected_course_codes": [
+        "22AS31255",
+        "22AS31263F",
+        "22CE22002F",
+        "22CE31001"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-adc0241945d487f5",
+      "repo_id": "22CS31052",
+      "display_name": "知识表示与推理",
+      "course_names": [
+        "知识表示与推理",
+        "知识表示与推理A"
+      ],
+      "expected_course_codes": [
+        "22CS31052",
+        "22CS31082F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ae90d75e11fec7ea",
+      "repo_id": "22EN31102C",
+      "display_name": "机器理论与机构学",
+      "course_names": [
+        "机器理论与机构学(1)",
+        "机器理论与机构学(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31102C",
+        "22EN31103C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ae98f475dbcf466c",
+      "repo_id": "22EM22704",
+      "display_name": "财务分析",
+      "course_names": [
+        "财务分析",
+        "财务分析A",
+        "财务分析B"
+      ],
+      "expected_course_codes": [
+        "22EM22704",
+        "22EM31604F",
+        "22EM31605F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-b286cbeb125f8962",
+      "repo_id": "22TS33402",
+      "display_name": "交通控制课程设计",
+      "course_names": [
+        "交通控制课程设计A",
+        "交通控制课程设计B"
+      ],
+      "expected_course_codes": [
+        "22TS33402",
+        "22TS33501"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-b3154320e11a6324",
+      "repo_id": "22AS31805B",
+      "display_name": "模拟集成电路设计基础",
+      "course_names": [
+        "模拟集成电路设计基础",
+        "模拟集成电路设计基础B"
+      ],
+      "expected_course_codes": [
+        "22AS31805B",
+        "22AS31809B"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-b82139106c633b7f",
+      "repo_id": "22IS22004",
+      "display_name": "精密机械学基础",
+      "course_names": [
+        "精密机械学基础(1)",
+        "精密机械学基础(2)"
+      ],
+      "expected_course_codes": [
+        "22IS22004",
+        "22IS22004F",
+        "22IS31401",
+        "22IS31401F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-bbaed0ea46675dd5",
+      "repo_id": "22IS31104",
+      "display_name": "在线智能测控系统设计",
+      "course_names": [
+        "在线智能测控系统设计",
+        "在线智能测控系统设计A"
+      ],
+      "expected_course_codes": [
+        "22IS31104",
+        "22IS31104F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-bc93b23c062d5257",
+      "repo_id": "22CS31051",
+      "display_name": "模式识别与机器学习",
+      "course_names": [
+        "模式识别与机器学习",
+        "模式识别与机器学习A",
+        "模式识别与机器学习B",
+        "模式识别与机器学习C"
+      ],
+      "expected_course_codes": [
+        "22CS31051",
+        "22CS31060",
+        "22CS31081F",
+        "22CS32703"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-bca0ff7f278b1a24",
+      "repo_id": "22AR22101F",
+      "display_name": "中外建筑史",
+      "course_names": [
+        "中外建筑史",
+        "中外建筑史A",
+        "中外建筑史B"
+      ],
+      "expected_course_codes": [
+        "22AR22101F",
+        "22AR31115",
+        "22AR31116"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-bcc6e289d216682f",
+      "repo_id": "22ES22006F",
+      "display_name": "核反应堆物理分析",
+      "course_names": [
+        "核反应堆物理分析",
+        "核反应堆物理分析I"
+      ],
+      "expected_course_codes": [
+        "22ES22006F",
+        "22ES31403"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-bcfff3bc70991d31",
+      "repo_id": "22CS21002",
+      "display_name": "集合论与图论",
+      "course_names": [
+        "集合论与图论",
+        "集合论与图论B"
+      ],
+      "expected_course_codes": [
+        "22CS21002",
+        "22CS22032"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c080453525dd88fe",
+      "repo_id": "22CC22008",
+      "display_name": "无机化学",
+      "course_names": [
+        "无机化学",
+        "无机化学C"
+      ],
+      "expected_course_codes": [
+        "22CC22008",
+        "22CC22010C",
+        "22EN21002C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c0ad9c7397ed828c",
+      "repo_id": "22EN21002",
+      "display_name": "普通生物学",
+      "course_names": [
+        "普通生物学",
+        "普通生物学A",
+        "普通生物学B"
+      ],
+      "expected_course_codes": [
+        "22EN21002",
+        "22EN31031",
+        "22LS22003"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c3475cdb1dd9f896",
+      "repo_id": "22CC32002C",
+      "display_name": "俄语基础语法",
+      "course_names": [
+        "俄语基础语法(3)",
+        "俄语基础语法(4)"
+      ],
+      "expected_course_codes": [
+        "22CC32002C",
+        "22CC32004C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c3c55f24e4fe081b",
+      "repo_id": "22EN31001F",
+      "display_name": "水质工程学",
+      "course_names": [
+        "水质工程学(1)",
+        "水质工程学(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31001F",
+        "22EN31002F",
+        "22EN31014",
+        "22EN31015"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c71ae85951823c4d",
+      "repo_id": "22HS22102",
+      "display_name": "古典社会学理论",
+      "course_names": [
+        "古典社会学理论",
+        "古典社会学理论A"
+      ],
+      "expected_course_codes": [
+        "22HS22102",
+        "22HS22163"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c8ead5d656336718",
+      "repo_id": "22FL22401",
+      "display_name": "大学英语综合",
+      "course_names": [
+        "大学英语综合(1)",
+        "大学英语综合(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22401",
+        "22FL22402"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-c9d5bb6c1dde34a3",
+      "repo_id": "22PH15020",
+      "display_name": "数学物理方法",
+      "course_names": [
+        "数学物理方法",
+        "数学物理方法(1)",
+        "数学物理方法(2)",
+        "数学物理方法A"
+      ],
+      "expected_course_codes": [
+        "22PH15020",
+        "22PH22011C",
+        "22PH22012",
+        "22PH22014C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ccc1494cb5d5cbb5",
+      "repo_id": "22FL22132",
+      "display_name": "英语听力",
+      "course_names": [
+        "英语听力(1)",
+        "英语听力(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22132",
+        "22FL22133"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ce71b4eac8e01f22",
+      "repo_id": "22EN31011",
+      "display_name": "水工程输配系统",
+      "course_names": [
+        "水工程输配系统(1)",
+        "水工程输配系统(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31011",
+        "22EN31012"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ceca34cff2e9afc6",
+      "repo_id": "22ME22006",
+      "display_name": "机械原理",
+      "course_names": [
+        "机械原理A",
+        "机械原理B"
+      ],
+      "expected_course_codes": [
+        "22ME22006",
+        "22ME22007",
+        "22ME22036F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d25a85f112658069",
+      "repo_id": "22AS31204",
+      "display_name": "计算机视觉",
+      "course_names": [
+        "计算机视觉",
+        "计算机视觉B"
+      ],
+      "expected_course_codes": [
+        "22AS31204",
+        "22CS31061"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d2de6e340d9e097d",
+      "repo_id": "22HS22307",
+      "display_name": "法律职业伦理",
+      "course_names": [
+        "法律职业伦理",
+        "法律职业伦理A"
+      ],
+      "expected_course_codes": [
+        "22HS22307",
+        "22HS31392"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d31d6d8511d1aa2a",
+      "repo_id": "22MS31706",
+      "display_name": "功能材料学",
+      "course_names": [
+        "功能材料学",
+        "功能材料学B"
+      ],
+      "expected_course_codes": [
+        "22MS31706",
+        "22MS31706F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d3ce82cd93d335f3",
+      "repo_id": "22PH22003C",
+      "display_name": "热学",
+      "course_names": [
+        "热学",
+        "热学(1)",
+        "热学(2)"
+      ],
+      "expected_course_codes": [
+        "22PH22003C",
+        "22PH22005",
+        "22PH22007C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d63600f130d0f644",
+      "repo_id": "22MA15035",
+      "display_name": "复变函数与积分变换",
+      "course_names": [
+        "复变函数与积分变换",
+        "复变函数与积分变换A",
+        "复变函数与积分变换B"
+      ],
+      "expected_course_codes": [
+        "22MA15035",
+        "22MA15036",
+        "MA21020"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d6dd6293d331970d",
+      "repo_id": "22EE220047",
+      "display_name": "控制理论与实践",
+      "course_names": [
+        "控制理论与实践",
+        "控制理论与实践B"
+      ],
+      "expected_course_codes": [
+        "22EE220047",
+        "22EE22009F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d7040ec2a283a5ee",
+      "repo_id": "22TS31402",
+      "display_name": "交通控制",
+      "course_names": [
+        "交通控制A",
+        "交通控制B"
+      ],
+      "expected_course_codes": [
+        "22TS31402",
+        "22TS31502"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d906f083e0b5f1dd",
+      "repo_id": "22FL22211",
+      "display_name": "俄语实践语法",
+      "course_names": [
+        "俄语实践语法(1)",
+        "俄语实践语法(2)",
+        "俄语实践语法(3)",
+        "俄语实践语法(4)"
+      ],
+      "expected_course_codes": [
+        "22FL22211",
+        "22FL22212",
+        "22FL22217",
+        "22FL22230"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-d9296d4c78018bd1",
+      "repo_id": "22ES31006F",
+      "display_name": "核反应堆安全分析",
+      "course_names": [
+        "核反应堆安全分析",
+        "核反应堆安全分析I"
+      ],
+      "expected_course_codes": [
+        "22ES31006F",
+        "22ES31405"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-dda2f979076534e3",
+      "repo_id": "22EM31101",
+      "display_name": "电子商务",
+      "course_names": [
+        "电子商务",
+        "电子商务B"
+      ],
+      "expected_course_codes": [
+        "22EM31101",
+        "22HS22252"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-df0f6a4cc104fdae",
+      "repo_id": "22FL22313",
+      "display_name": "日语口语",
+      "course_names": [
+        "日语口语(1)",
+        "日语口语(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22313",
+        "22FL22323"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-e27f88639463c84f",
+      "repo_id": "22EI22307",
+      "display_name": "通信电子线路",
+      "course_names": [
+        "通信电子线路A",
+        "通信电子线路B"
+      ],
+      "expected_course_codes": [
+        "22EI22307",
+        "22EI22308"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-e45319e98b14e222",
+      "repo_id": "22FL22410",
+      "display_name": "高级法语",
+      "course_names": [
+        "高级法语(1)",
+        "高级法语(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22410",
+        "22FL22411"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-e61f4c4df12bd4c1",
+      "repo_id": "22CS33050",
+      "display_name": "人工智能程序设计实践",
+      "course_names": [
+        "人工智能程序设计实践",
+        "人工智能程序设计实践B"
+      ],
+      "expected_course_codes": [
+        "22CS33050",
+        "22CS33060"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-e791194b0c26b13f",
+      "repo_id": "22AR22011",
+      "display_name": "城市能源规划与管理",
+      "course_names": [
+        "城市能源规划与管理A",
+        "城市能源规划与管理B"
+      ],
+      "expected_course_codes": [
+        "22AR22011",
+        "22AR31005F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-eaf4a24ed9e1e7bd",
+      "repo_id": "22EM21901F",
+      "display_name": "宏观经济学",
+      "course_names": [
+        "宏观经济学",
+        "宏观经济学A"
+      ],
+      "expected_course_codes": [
+        "22EM21901F",
+        "22HS22283"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-eb8d9add6681b698",
+      "repo_id": "22FL22408",
+      "display_name": "基础法语",
+      "course_names": [
+        "基础法语(1)",
+        "基础法语(2)"
+      ],
+      "expected_course_codes": [
+        "22FL22408",
+        "22FL22409"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ed44c9acc13307c7",
+      "repo_id": "22CS22003",
+      "display_name": "数字逻辑与数字系统设计",
+      "course_names": [
+        "数字逻辑与数字系统设计",
+        "数字逻辑与数字系统设计B"
+      ],
+      "expected_course_codes": [
+        "22CS22003",
+        "22CS22035"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ee20f71da02c4147",
+      "repo_id": "22HS22112B",
+      "display_name": "社会统计软件与数据分析技术基础",
+      "course_names": [
+        "社会统计软件与数据分析技术基础",
+        "社会统计软件与数据分析技术基础A"
+      ],
+      "expected_course_codes": [
+        "22HS22112B",
+        "22HS31162B"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ef02f43e01d336fd",
+      "repo_id": "22HS31202B",
+      "display_name": "产业经济学",
+      "course_names": [
+        "产业经济学",
+        "产业经济学A"
+      ],
+      "expected_course_codes": [
+        "22HS31202B",
+        "22HS31283"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ef7be5be3c137fb6",
+      "repo_id": "22PE13001",
+      "display_name": "体育",
+      "course_names": [
+        "体育(1)",
+        "体育(2)",
+        "体育(3)",
+        "体育(4)",
+        "体育(5)",
+        "体育(6)"
+      ],
+      "expected_course_codes": [
+        "22PE13001",
+        "22PE13001C",
+        "22PE13002",
+        "22PE13002C",
+        "22PE13003",
+        "22PE13003C",
+        "22PE13004",
+        "22PE13004C",
+        "22PE13005",
+        "22PE13005C",
+        "22PE13006",
+        "22PE13006C"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f0037981c0b9b2ba",
+      "repo_id": "22CS31003",
+      "display_name": "处理器设计与实践",
+      "course_names": [
+        "处理器设计与实践A",
+        "处理器设计与实践B",
+        "处理器设计与实践C"
+      ],
+      "expected_course_codes": [
+        "22CS31003",
+        "22CS31033",
+        "22CS33010"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f14fb8f7c1f98743",
+      "repo_id": "22CS22002",
+      "display_name": "数理逻辑与近世代数",
+      "course_names": [
+        "数理逻辑与近世代数",
+        "数理逻辑与近世代数C"
+      ],
+      "expected_course_codes": [
+        "22CS22002",
+        "22CS22038",
+        "CS31114"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f1a88019610cc954",
+      "repo_id": "22CE31001F",
+      "display_name": "混凝土结构基本原理",
+      "course_names": [
+        "混凝土结构基本原理",
+        "混凝土结构基本原理A",
+        "混凝土结构基本原理B"
+      ],
+      "expected_course_codes": [
+        "22CE31001F",
+        "22CE31002",
+        "22CE31023"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f25024c9bba10fc1",
+      "repo_id": "22CS22006",
+      "display_name": "计算机组成原理",
+      "course_names": [
+        "计算机组成原理",
+        "计算机组成原理A",
+        "计算机组成原理B",
+        "计算机组成原理C"
+      ],
+      "expected_course_codes": [
+        "22CS22006",
+        "22CS22007",
+        "22CS22039",
+        "CS32134"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f4d7b64a4b89654e",
+      "repo_id": "22CS31050",
+      "display_name": "人工智能数学基础",
+      "course_names": [
+        "人工智能数学基础",
+        "人工智能数学基础A"
+      ],
+      "expected_course_codes": [
+        "22CS31050",
+        "22CS31080F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f6539a5787a3798f",
+      "repo_id": "22HS22302",
+      "display_name": "宪法学",
+      "course_names": [
+        "宪法学",
+        "宪法学A"
+      ],
+      "expected_course_codes": [
+        "22HS22302",
+        "22HS22391"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f67b4c80b453e891",
+      "repo_id": "22AS22255F",
+      "display_name": "计算力学",
+      "course_names": [
+        "计算力学",
+        "计算力学A",
+        "计算力学B"
+      ],
+      "expected_course_codes": [
+        "22AS22255F",
+        "22AS31252",
+        "22AS31306"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f73548468f88f9af",
+      "repo_id": "22AS22005",
+      "display_name": "材料力学",
+      "course_names": [
+        "材料力学A",
+        "材料力学B",
+        "材料力学C",
+        "材料力学D",
+        "材料力学E"
+      ],
+      "expected_course_codes": [
+        "22AS22005",
+        "22AS22006",
+        "22AS22007",
+        "22AS22007F",
+        "22AS22019",
+        "22AS22252F",
+        "22CE22004F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f90a24df0ed4b8fa",
+      "repo_id": "22FL22210",
+      "display_name": "俄语口语",
+      "course_names": [
+        "俄语口语(1)",
+        "俄语口语(2)",
+        "俄语口语(3)",
+        "俄语口语(4)"
+      ],
+      "expected_course_codes": [
+        "22FL22210",
+        "22FL22215",
+        "22FL22218",
+        "22FL22231"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-f94dbd93e2aa76cd",
+      "repo_id": "22EE22021",
+      "display_name": "电路实验",
+      "course_names": [
+        "电路实验A(1)",
+        "电路实验A(2)",
+        "电路实验B",
+        "电路实验D"
+      ],
+      "expected_course_codes": [
+        "22EE22021",
+        "22EE22022",
+        "22EE22023",
+        "22EE22025"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fa33fcbd3545c886",
+      "repo_id": "22CS31306",
+      "display_name": "云原生技术实践",
+      "course_names": [
+        "云原生技术实践",
+        "云原生技术实践A"
+      ],
+      "expected_course_codes": [
+        "22CS31306",
+        "CS32482"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fa9c2595d31ab74e",
+      "repo_id": "22CC31023F",
+      "display_name": "生物化学",
+      "course_names": [
+        "生物化学",
+        "生物化学A(1)",
+        "生物化学A(2)"
+      ],
+      "expected_course_codes": [
+        "22CC31023F",
+        "22LS22009",
+        "22LS22016"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fcdc0b360e5d4908",
+      "repo_id": "22AS31257",
+      "display_name": "力学与航天科研实践",
+      "course_names": [
+        "力学与航天科研实践(1)",
+        "力学与航天科研实践(2)",
+        "力学与航天科研实践(3)"
+      ],
+      "expected_course_codes": [
+        "22AS31257",
+        "22AS31258",
+        "22AS31259"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fcea7aaa0f00bedf",
+      "repo_id": "22HS22111",
+      "display_name": "经济社会学",
+      "course_names": [
+        "经济社会学",
+        "经济社会学A"
+      ],
+      "expected_course_codes": [
+        "22HS22111",
+        "22HS31168"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fd3000f2e131081c",
+      "repo_id": "22EM22904",
+      "display_name": "财政学",
+      "course_names": [
+        "财政学",
+        "财政学A"
+      ],
+      "expected_course_codes": [
+        "22EM22904",
+        "22HS22209",
+        "22HS31285"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fdb785e7d02efef4",
+      "repo_id": "22CC21001",
+      "display_name": "无机与分析化学",
+      "course_names": [
+        "无机与分析化学",
+        "无机与分析化学(1)",
+        "无机与分析化学(2)"
+      ],
+      "expected_course_codes": [
+        "22CC21001",
+        "22CC21002",
+        "22CC22002F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-fe69d5f02d878b65",
+      "repo_id": "22IS22001",
+      "display_name": "电路与信号处理",
+      "course_names": [
+        "电路与信号处理(1)",
+        "电路与信号处理(2)"
+      ],
+      "expected_course_codes": [
+        "22IS22001",
+        "22IS22002"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "name-family-ff7923d3dc4823d1",
+      "repo_id": "22EN31003F",
+      "display_name": "给水排水管道系统",
+      "course_names": [
+        "给水排水管道系统(1)",
+        "给水排水管道系统(2)"
+      ],
+      "expected_course_codes": [
+        "22EN31003F",
+        "22EN31004F"
+      ],
+      "legacy_units": [],
+      "evidence": "首次全量分组按用户批准的资源共享策略，将仅有等级字母、罗马数字或序列后缀差异的课程名称显式归为一个资料仓库；每个课程代码仍保留独立 descriptor。"
+    },
+    {
+      "group_id": "numerical-differential-equations",
+      "repo_id": "22MA31014",
+      "display_name": "微分方程数值解",
+      "course_names": [
+        "微分方程数值方法"
+      ],
+      "expected_course_codes": [
+        "22MA31014",
+        "22MA31014F"
+      ],
+      "legacy_units": [
+        "数学学院/专业基础课/微分方程数值解"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "object-oriented-programming",
+      "repo_id": "22EM31002F",
+      "display_name": "面向对象程序设计",
+      "course_names": [
+        "面向对象程序设计"
+      ],
+      "expected_course_codes": [
+        "22EM31002F",
+        "22EM31102"
+      ],
+      "legacy_units": [
+        "经管学院/面对对象编程.pdf"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "optimal-control",
+      "repo_id": "22AS31202",
+      "display_name": "最优控制",
+      "course_names": [
+        "最优控制基础"
+      ],
+      "expected_course_codes": [
+        "22AS31202",
+        "AS33106"
+      ],
+      "legacy_units": [
+        "未来技术学院/【小卫星班】最优控制"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "phase-transformation",
+      "repo_id": "22MS31701",
+      "display_name": "相变原理",
+      "course_names": [
+        "材料热力学与相变原理"
+      ],
+      "expected_course_codes": [
+        "22MS31701",
+        "22MS31701F"
+      ],
+      "legacy_units": [
+        "校内资源/材料科学与工程学院/细分专业课/材料物理/相变原理"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "precision-measurement",
+      "repo_id": "22IS31402",
+      "display_name": "精密测量原理",
+      "course_names": [
+        "精密测量原理与仪器设计",
+        "精密测量原理与仪器设计A"
+      ],
+      "expected_course_codes": [
+        "22IS31402",
+        "22IS31402F"
+      ],
+      "legacy_units": [
+        "仪器学院/精密测量原理.pdf"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "probability-statistics",
+      "repo_id": "22MA15024",
+      "display_name": "概率论与数理统计",
+      "course_names": [
+        "概率论与数理统计B",
+        "概率论与数理统计C",
+        "概率论与数理统计D",
+        "概率论与数理统计E",
+        "概率论与数理统计F",
+        "概率论与数理统计H",
+        "概率论与数理统计x"
+      ],
+      "expected_course_codes": [
+        "22MA15024",
+        "22MA15025",
+        "22MA15026",
+        "22MA15027",
+        "22MA15028",
+        "22MA15029",
+        "22MA15031",
+        "22MA15043C",
+        "MA21017"
+      ],
+      "legacy_units": [
+        "【公共课】/【公共课】概率论与数理统计"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "signals-and-systems",
+      "repo_id": "22EE22004F",
+      "display_name": "信号与系统",
+      "course_names": [
+        "信号与系统",
+        "信号与系统A",
+        "信号与系统B"
+      ],
+      "expected_course_codes": [
+        "22CS31250",
+        "22EE22004F",
+        "22EE22042",
+        "22EE22049",
+        "22EI22304",
+        "22EI22305",
+        "22TS22501"
+      ],
+      "legacy_units": [
+        "电信学院/信号与系统",
+        "未来技术学院/【人工智能板块】信号复习笔记.pdf",
+        "薪火笔记社-竞赛/HIT外置/【实验】信号与系统实验"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "theoretical-mechanics",
+      "repo_id": "22AS22001",
+      "display_name": "理论力学",
+      "course_names": [
+        "理论力学",
+        "理论力学A",
+        "理论力学B",
+        "理论力学C",
+        "理论力学D",
+        "理论力学E"
+      ],
+      "expected_course_codes": [
+        "22AS22001",
+        "22AS22002",
+        "22AS22003",
+        "22AS22004",
+        "22AS22004F",
+        "22AS22018",
+        "22AS22251F",
+        "22PH22011",
+        "22PH22013C"
+      ],
+      "legacy_units": [
+        "【公共课】/【工科公共课】理论力学",
+        "物理学院/专业基础课/理论力学",
+        "薪火笔记社-竞赛/HIT外置/薪火（源：HIT外置学习资料库）-理论力学.zip"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "traffic-engineering",
+      "repo_id": "22TS22001F",
+      "display_name": "交通工程",
+      "course_names": [
+        "交通工程学"
+      ],
+      "expected_course_codes": [
+        "22TS22001F"
+      ],
+      "legacy_units": [
+        "交通科学与工程学院/交通工程.zip"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "transport-principles",
+      "repo_id": "22MS31108",
+      "display_name": "传输原理",
+      "course_names": [
+        "传输原理A"
+      ],
+      "expected_course_codes": [
+        "22MS31108",
+        "22MS31108F"
+      ],
+      "legacy_units": [
+        "校内资源/材料科学与工程学院/细分专业课/材料科学与工程/传输原理"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "university-chemistry",
+      "repo_id": "22CC15003",
+      "display_name": "大学化学",
+      "course_names": [
+        "大学化学C",
+        "大学化学D",
+        "大学化学x"
+      ],
+      "expected_course_codes": [
+        "22CC15003",
+        "22CC15004",
+        "22CC15005"
+      ],
+      "legacy_units": [
+        "【公共课】/【公共课】大学化学"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "university-physics",
+      "repo_id": "22PH15001",
+      "display_name": "大学物理",
+      "course_names": [
+        "大学物理A(1)",
+        "大学物理A(2)",
+        "大学物理B(1)",
+        "大学物理B(2)",
+        "大学物理C(1)",
+        "大学物理C(2)",
+        "大学物理D(1)",
+        "大学物理D(2)",
+        "大学物理E",
+        "大学物理F",
+        "大学物理x(1)",
+        "大学物理x(2)"
+      ],
+      "expected_course_codes": [
+        "22PH15001",
+        "22PH15002",
+        "22PH15003",
+        "22PH15004",
+        "22PH15005",
+        "22PH15006",
+        "22PH15007",
+        "22PH15008",
+        "22PH15008C",
+        "22PH15010",
+        "22PH15011",
+        "22PH15012",
+        "22PH15012C",
+        "22PH15013",
+        "22PH15013C"
+      ],
+      "legacy_units": [
+        "【公共课】/【公共课】大学物理"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "university-physics-labs",
+      "repo_id": "22PH15014",
+      "display_name": "大学物理实验",
+      "course_names": [
+        "大学物理实验A(1)",
+        "大学物理实验A(2)",
+        "大学物理实验B",
+        "大学物理实验x(1)",
+        "大学物理实验x(2)"
+      ],
+      "expected_course_codes": [
+        "22PH15014",
+        "22PH15015",
+        "22PH15016",
+        "22PH15017",
+        "22PH15018"
+      ],
+      "legacy_units": [
+        "实验报告/物理实验报告/大学物理实验报告"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "welding-methods-equipment",
+      "repo_id": "22MS31501F",
+      "display_name": "焊接方法与设备",
+      "course_names": [
+        "焊接方法与设备"
+      ],
+      "expected_course_codes": [
+        "22MS31501F",
+        "22MS31502"
+      ],
+      "legacy_units": [
+        "校内资源/材料科学与工程学院/细分专业课/焊接技术与工程/电弧焊方法与设备"
+      ],
+      "evidence": "冻结附件树将这些名称或代码的资料放在同一维护单元；首次全量分组已由用户批准。"
+    },
+    {
+      "group_id": "ideological-political-theory-practice",
+      "repo_id": "22AD11001C",
+      "display_name": "思想政治理论实践课",
+      "course_names": [
+        "思想政治理论实践课"
+      ],
+      "expected_course_codes": [
+        "22AD11001",
+        "22AD11001C"
+      ],
+      "legacy_units": [],
+      "evidence": "旧 canary 仓库 22AD11001 属于冻结的前一仓库世代，不覆盖也不复用；v2 资源分组改用组内未占用代码 22AD11001C。"
+    }
+  ]
+}
