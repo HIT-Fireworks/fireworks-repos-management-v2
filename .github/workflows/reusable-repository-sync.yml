@@ -11,3 +11,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate base metadata
         run: test -f repository.toml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate Python syntax
+        run: python -m py_compile scripts/*.py tests/*.py
+      - name: Validate JSON core and safety gates
+        run: python -m unittest tests/test_fireworks_manager_core.py
+      - name: Validate state machine and Git engine
+        run: python -m unittest tests/test_fireworks_manager_state_machine.py tests/test_repository_management.py
+      - name: Validate Rust TUI
+        run: cargo test --locked --manifest-path repository-tui/Cargo.toml
+      - name: Smoke-test current v4 workspace
+        run: cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --workspace . --check > /dev/null
