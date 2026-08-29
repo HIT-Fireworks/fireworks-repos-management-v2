@@ -1,29 +1,34 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
-use repository_tui::{run, run_headless};
+use repository_tui::{run, run_headless, Manager};
 
 fn main() -> Result<()> {
     let mut args = std::env::args_os().skip(1);
-    let mut workspace = PathBuf::from(".");
+    let mut workspace: Option<PathBuf> = None;
     let mut check = false;
     while let Some(argument) = args.next() {
         match argument.to_string_lossy().as_ref() {
             "--workspace" | "--root" => {
-                workspace = PathBuf::from(args.next().context("--workspace 缺少路径")?);
+                workspace = Some(PathBuf::from(args.next().context("--workspace 缺少路径")?));
             }
             "--check" => check = true,
             "-h" | "--help" => {
                 println!(
-                    "repository-tui [--workspace PATH] [--check]\n\n\
-                     --workspace PATH  指定包含 v4 manifest/topology/routes 的工作区\n\
-                     --check           通过 JSON 核心加载状态并输出摘要"
+                    "薪火资料管理 [--workspace PATH] [--check]\n\n\
+                     普通使用请直接双击启动，无需参数。\n\
+                     --workspace PATH  仅供维护人员指定数据目录\n\
+                     --check           检查安装包是否完整"
                 );
                 return Ok(());
             }
             unknown => bail!("未知参数：{unknown}"),
         }
     }
+    let workspace = match workspace {
+        Some(path) => path,
+        None => Manager::discover()?.workspace().to_path_buf(),
+    };
     if check {
         let dashboard = run_headless(workspace)?;
         println!(

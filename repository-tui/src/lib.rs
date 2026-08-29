@@ -2,4 +2,4 @@ pub mod app;
 pub mod state;
 
 pub use app::{run, run_headless};
-pub use state::{CoreClient, Dashboard, Health, RepositoryDetail, RepositorySummary};
+pub use state::{Dashboard, Health, Manager, RepositoryDetail, RepositorySummary};

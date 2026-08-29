@@ -1,162 +1,121 @@
-# 薪火课程仓库管理 v2
+# 薪火资料管理
 
-`fireworks-repos-management-v2` 是 HIT-Fireworks 的唯一仓库管理产品。它将人类 TUI、Agent Skill 和 JSON 核心接到同一套 v4 状态与安全状态机；TUI、Skill 都不直接改写 manifest、topology、routes，也不绕过计划调用 GitHub mutation。
+这是给普通人使用的 HIT-Fireworks 资料管理工具。**不需要会写代码，不需要安装 Python 或 Rust，也不需要输入 JSON、仓库编号、哈希值或确认口令。**
 
-## 架构与权威数据
+## 最简单的使用方法
+
+1. 在 GitHub Releases 下载 `薪火资料管理-Windows.zip`。
+2. 完整解压 ZIP。
+3. 双击 `启动薪火资料管理.cmd`。
+4. 只使用：
+   - `↑` / `↓`：选择；
+   - `Enter`：确认；
+   - `Esc`：返回。
+
+首页提供五件事：
+
+- 查看和搜索资料；
+- 合并几份资料；
+- 拆分一份资料；
+- 查看任务记录；
+- 系统检查。
+
+查看资料完全离线可用。合并或拆分资料时，系统检查页会用中文提示是否需要安装 Git 或登录 GitHub。
+
+## 普通用户会看到什么
+
+### 查看资料
+
+按课程名或资料名称搜索，查看课程名称、文件数量、占用空间和清点状态。界面以中文名称为主，不显示内部仓库编号。
+
+### 合并资料
+
+1. 在中文资料列表中按 Enter 勾选至少两份；
+2. 填写合并后的中文名称；
+3. 查看“会发生什么”的自然语言预览；
+4. 选择“确认执行”。
+
+同名文件不会覆盖，工具会自动放入独立目录。内部目标编号、计划身份和安全确认由程序生成并处理，不要求用户理解或抄写。
+
+### 拆分资料
+
+1. 选择一份已完成文件清点、包含多个独立内容组的资料；
+2. 选择拆成几份；
+3. 用左右方向键给每个中文课程组或零散文件选择去向；
+4. 给每份结果填写中文名称；
+5. 查看预览并确认。
+
+工具会自动生成内部目标编号、完整分区、文件移动和课程路由，不要求输入 JSON 或资源组 ID。
+
+### 任务记录
+
+程序中断或网络失败后，首页进入“任务记录”。如果可以安全继续，界面显示“可以继续”；按 Enter 即可恢复。已完成任务可以再次检查最终结果。资料已变化或任务记录被修改时，程序拒绝自动继续并提示联系维护人员。
+
+## 安全设计
+
+人类界面隐藏技术细节，但不会降低安全门禁：
+
+- 操作前冻结本地 manifest/topology/routes 身份；
+- 校验源仓库和目标仓库远端版本；
+- 计划内容带 SHA-256 身份，任务记录被修改会拒绝；
+- 文件使用精确 Git tree 构造，不覆盖同名内容；
+- 最终远端 HEAD 写入独立的 `resolved_after_routes`，原计划保持不变；
+- topology 和 routes 分阶段原子写入，可在中断后继续；
+- 任何本地或远端漂移都会停止。
+
+## 单一 Rust 运行时
+
+发行包只包含：
 
 ```text
-Rust ratatui TUI ─┐
-Agent Skill      ├─ JSON CommandEnvelope → Python JSON Core → 状态引擎 / GitHub
-CLI              ┘
-```
-
-默认工作区包含：
-
-```text
-data/repository-manifest.no-collection.v4.json
-data/repository-management-operations/       # 计划与 journal；可不存在
+薪火资料管理.exe
+启动薪火资料管理.cmd
+请先看我.txt
 config/repository-topology.v4.json
 config/repository-file-routes.v4.json
-scripts/fireworks_manager_core.py
-scripts/repository_management.py
+data/repository-manifest.no-collection.v4.json
 ```
 
-`--workspace PATH` 只指定数据工作区；核心脚本由 TUI 从 `FIREWORKS_MANAGER_CORE`、开发树 `CARGO_MANIFEST_DIR` 或可执行文件祖先目录定位，不要求外部数据目录复制 `scripts/`。
+生产运行时是单一 Rust 可执行文件，不启动 Python 子进程。程序自动从可执行文件同目录发现数据。
 
-当前附带快照运行时核对得到：100 个仓库、2,618 条课程代码路由、3,857 条文件路由、75 个完整库存仓库、16 个虚拟集合、18 个 special-topic 路由。数字不硬编码在适配器中。
+Python 文件仍保留在源码仓中，仅用于：
 
-## JSON 核心
+- 离线生成和审计 manifest；
+- 验证历史迁移；
+- 作为迁移到 Rust 期间的行为对照。
 
-直接查询：
+它们不进入 Windows 普通用户发行包。
+
+## 当前数据
+
+随发行包附带的 v4 快照包含：
+
+- 100 个资料仓库；
+- 2,618 条课程代码路由；
+- 3,857 条文件路由；
+- 75 个已完成文件清点的仓库；
+- 16 个虚拟集合；
+- 18 条 special-topic 路由。
+
+## 维护人员开发
 
 ```sh
-python scripts/fireworks_manager_core.py query inspect
-python scripts/fireworks_manager_core.py query validate
-python scripts/fireworks_manager_core.py query search 数理逻辑 --limit 50
-python scripts/fireworks_manager_core.py query repository COURSES-RA-ED4F15651BB9
+cargo test --locked --manifest-path repository-tui/Cargo.toml
+cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --check
 ```
 
-通用 transport 从 stdin 读取一个 `CommandEnvelope`：
+可选 `--workspace PATH` 仅供测试外部数据目录；普通用户无需任何参数。
 
-```sh
-python scripts/fireworks_manager_core.py --workspace . invoke < request.json
-```
-
-支持的 command：
-
-| family | kind | 作用 |
-|---|---|---|
-| `query` | `inspect` / `validate` | 健康、状态 identity |
-| `query` | `search` / `repository` | 按 repo_id、语义、课程代码、原始课程名定位 |
-| `query` | `routes` | 文件与课程代码路由；`limit=0` 明确表示返回完整快照，省略 limit 默认 200 |
-| `query` | `plan` | 列出或读取已持久化计划；无 operations 目录返回空列表 |
-| `query` | `journals` | 列出 journal 及 `recovery_state`：`completed`、`resumable`、`drifted` 或 `invalid` |
-| `plan` | `split` | 以完整互斥资源组和显式路径分配生成冻结拆分计划 |
-| `plan` | `merge` | 生成整仓合并计划；冲突路径自动记录 relocation |
-| `execute` | `apply` | 仅执行已签名、未漂移且明确批准的计划 |
-| `execute` | `verify` | 仅验证 completed journal 的最终 topology/routes 与远端 HEAD |
-| `execute` | `resume` | 仅按 journal 的 `resumable` 状态续跑 |
-
-### 计划与远端基线
-
-`plan.split` 参数至少包括：
-
-```json
-{
-  "source_repo_id": "COURSE-A",
-  "targets": [
-    {"repo_id":"COURSE-A1","display_name":"课程一","resource_group_ids":["group-a"],"paths":["README.md"]},
-    {"repo_id":"COURSE-A2","display_name":"课程二","resource_group_ids":["group-b"],"paths":[]}
-  ]
-}
-```
-
-`plan.merge` 参数包括 `source_repo_ids`、`target_repo_id` 和 `display_name`。计划持久化前冻结：
-
-- `plan_identity_sha256`（从持久化计划内容重算，排除 `created_at` 与 identity 自身）；
-- organization、请求 actor、workspace identity；
-- Registry manifest/baseline；
-- 源仓库 commit/tree、目标仓库存在性与 HEAD、remote URL。
-
-计划的 `after` 内容不可变。远端目标 HEAD 解析写入 journal 的 `resolved_after_routes`，不回写计划。
-
-### 执行状态机
-
-```text
-read_only → frozen_plan → reviewed → confirmed → applying → verifying → completed
-                                      ├──────────────→ failed → resumable
-                                      └──────────────→ drifted
-```
-
-所有 APPLY/RESUME challenge 必须原样回传；大小写、尾随空格和改写都拒绝。apply 会在 Git 迁移前检查所有 baseline，并对缺失目标执行已记录的幂等建仓。任何 identity、actor、Registry、HEAD、目标存在性或工作区状态漂移都停止。
-
-## Rust TUI
-
-依赖 Rust、ratatui、crossterm。启动：
-
-```sh
-cargo run --locked --manifest-path repository-tui/Cargo.toml -- --workspace .
-```
-
-主工作台通过 `Tab` / `Shift-Tab` 切换四页：
-
-- **Repositories**：搜索、语义详情、课程代码/原始课程名、文件库存；`Space` 多选合并源仓库；
-- **Routes**：浏览文件路由与课程代码路由；
-- **Plans**：查看 split/merge 冻结计划、源/目标、文件移动、风险、完整 identity 和 confirmation；
-- **Journals**：查看 status 与 `recovery_state`；仅 `resumable` journal 可输入 `RESUME` challenge，只有 `completed` journal 可 verify。
-
-计划命令面板：
-
-- `p` → `m`：用 Space 选中的仓库进入 merge 向导，填写目标 repo_id 与展示名；
-- `p` → `s`：对当前完整库存仓库填写完整 split 分区（紧凑格式或 `SplitTarget` JSON 数组）；
-- 计划详情 `a`：输入核心返回的精确 `APPLY <operation-id>`；
-- journal 详情 `r`：输入精确 `RESUME <operation-id>`；`v`：验证 completed journal。
-
-通用按键：`j/k` 或方向键移动，`Enter` 进入详情，`/` 搜索，`h` 健康，`r` 刷新，`?` 帮助，`Esc/b` 返回，`q` 退出。窄屏自动退化为单栏；中文截断按显示宽度处理。
-
-无头烟测：
-
-```sh
-cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --workspace . --check
-```
-
-Rust `TestBackend` 回归测试覆盖 ASCII/中文输入后的重绘、四页切换、split 规格解析、严格 challenge 和 Unicode 显示宽度。Windows 实际 PTY 已验证可进入 raw mode 并绘制总览；若自动化终端无法注入后续按键，不将未观测的端到端序列声明为通过。
-
-## Agent Skill
-
-Skill 位于 `skills/hit-fireworks-repository-management/`，是 JSON 核心的薄适配器：
-
-1. `query.inspect` → 保存 workspace identity；
-2. `query.search` / `query.repository` / `query.routes` 定位目标；
-3. `plan.split` 或 `plan.merge` 生成并保存计划；
-4. 向用户展示完整风险、源/目标、路由、文件移动、远端 baseline、plan identity 和 confirmation；
-5. 仅在用户批准当前完整 identity 后 `execute.apply`；
-6. `execute.verify` 闭合最终状态；
-7. `query.journals` 判断 `completed` / `resumable` / `drifted` / `invalid`，仅按参考流程 resume。
-
-参考文件：
-
-- `references/schema.md`：Envelope、结果字段、参数和错误码；
-- `references/mutation.md`：apply/verify 的确认与停止门禁；
-- `references/recovery.md`：journal 恢复、远端重查和漂移处理。
-
-## 安全边界
-
-默认所有 query 只读，不创建 operations 目录、不写权威状态文件。远端 mutation 只由核心 execute 路径执行；TUI/Skill 不直接调用 GitHub API。不存在的 operations 目录在 query.plan/query.journals 中等同于空集合。
-
-不得使用 `--yes`、修改字段后重试、用简称代替 identity、把 CourseGroup 当作仓库合并指令，或在计划外自动重映射。
-
-## 验证
-
-本地等价 CI 命令：
+Python 行为对照：
 
 ```sh
 python -m py_compile scripts/*.py tests/*.py
 python -m unittest tests/test_fireworks_manager_core.py
-python -m unittest tests/test_fireworks_manager_state_machine.py
-python -m unittest tests/test_repository_management.py
-cargo test --locked --manifest-path repository-tui/Cargo.toml
-cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --workspace . --check
+python -m unittest tests/test_fireworks_manager_state_machine.py tests/test_repository_management.py
 ```
 
-CI 会运行同一组检查；测试不执行真实 GitHub mutation，远端写操作必须由用户批准的计划显式触发。
+Rust 测试覆盖中文首页、纯方向键向导、内部标识隐藏、语义拆分、自动目标编号、原生 bare-remote Git 迁移、课程路由更新、journal 防篡改、恢复和最终验证。
+
+## Agent Skill
+
+`skills/hit-fireworks-repository-management/` 仍供 Agent 使用。Agent 可以读取技术 identity 和 journal，但人类 TUI 不展示这些字段。两者使用相同 v4 状态和安全不变量。
