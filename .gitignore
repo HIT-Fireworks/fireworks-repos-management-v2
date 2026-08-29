@@ -3,3 +3,5 @@ __pycache__/
 *.log
 repository-tui/target/
 data/repository-management-operations/
+artifact-check/
+dist-local/

@@ -4,7 +4,7 @@
 
 ## 最简单的使用方法
 
-1. 在 GitHub Releases 下载 `薪火资料管理-Windows.zip`。
+1. 在 GitHub Releases 下载 `fireworks-manager-windows.zip`。
 2. 完整解压 ZIP。
 3. 双击 `启动薪火资料管理.cmd`。
 4. 只使用：
