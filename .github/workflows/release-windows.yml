@@ -22,30 +22,31 @@ jobs:
       - name: Assemble no-code package
         shell: pwsh
         run: |
-          $package = "dist/薪火资料管理-Windows"
+          $package = "dist/薪火仓库管理-Windows"
           New-Item -ItemType Directory -Force "$package/config", "$package/data" | Out-Null
-          Copy-Item "repository-tui/target/release/repository-tui.exe" "$package/薪火资料管理.exe"
-          Copy-Item "启动薪火资料管理.cmd" "$package/启动薪火资料管理.cmd"
+          Copy-Item "repository-tui/target/release/repository-tui.exe" "$package/薪火仓库管理.exe"
+          Copy-Item "启动薪火仓库管理.cmd" "$package/启动薪火仓库管理.cmd"
           Copy-Item "config/repository-topology.v4.json" "$package/config/repository-topology.v4.json"
           Copy-Item "config/repository-file-routes.v4.json" "$package/config/repository-file-routes.v4.json"
           Copy-Item "data/repository-manifest.no-collection.v4.json" "$package/data/repository-manifest.no-collection.v4.json"
           @"
-          薪火资料管理
+          薪火仓库管理
 
           1. 完整解压 ZIP。
-          2. 双击“启动薪火资料管理.cmd”。
+          2. 双击“启动薪火仓库管理.cmd”。
           3. 使用方向键选择，Enter 确认，Esc 返回。
 
-          查看资料无需安装其他软件。
-          合并或拆分资料时，系统检查页会提示是否需要安装 Git 或登录 GitHub。
+          查看仓库和现有数据完全离线可用。
+          更新教务数据时，需要先在浏览器登录教务系统并临时粘贴 Cookie（不会写入磁盘）。
+          同步 Registry 或远端仓库时，系统检查页会提示是否需要 Git 或 GitHub 登录。
           "@ | Set-Content -Encoding utf8 "$package/请先看我.txt"
-          Compress-Archive -Path "$package/*" -DestinationPath "dist/fireworks-manager-windows.zip" -Force
+          Compress-Archive -Path "$package/*" -DestinationPath "dist/fireworks-repository-manager-windows.zip" -Force
       - uses: actions/upload-artifact@v5
         with:
-          name: 薪火资料管理-Windows
-          path: dist/fireworks-manager-windows.zip
+          name: 薪火仓库管理-Windows
+          path: dist/fireworks-repository-manager-windows.zip
       - name: Attach package to tagged release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" "dist/fireworks-manager-windows.zip" --generate-notes --title "薪火资料管理 ${{ github.ref_name }}"
+        run: gh release create "${{ github.ref_name }}" "dist/fireworks-repository-manager-windows.zip" --generate-notes --title "薪火仓库管理 ${{ github.ref_name }}"

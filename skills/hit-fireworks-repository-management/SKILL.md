@@ -1,85 +1,99 @@
 ---
 name: hit-fireworks-repository-management
-description: 管理 HIT-Fireworks 资料仓库。普通用户请求时必须优先提供 Windows 易用版下载、双击启动和中文向导，不让用户接触代码、JSON、repo_id、identity 或 challenge；Agent/维护任务才使用技术状态与离线 Python 行为对照。
+description: 管理 HIT-Fireworks 完整仓库生命周期，包括从 HIT 本部教务系统更新课程数据、审阅差异、重建 Registry/manifest/topology/routes、创建与同步 GitHub 仓库、归档和恢复。普通用户必须优先使用 Windows 中文向导，不暴露代码、JSON、内部 ID 或哈希。
 ---
 
-# HIT-Fireworks 资料管理
+# HIT-Fireworks 仓库管理
 
-## 先判断使用者
+## 普通用户入口
 
-### 普通用户
+默认提供 GitHub Release 中的 `fireworks-repository-manager-windows.zip`：
 
-默认使用 GitHub Release 中的 `薪火资料管理-Windows.zip`：
-
-1. 下载并完整解压；
-2. 双击 `启动薪火资料管理.cmd`；
+1. 完整解压；
+2. 双击 `启动薪火仓库管理.cmd`；
 3. 使用 `↑↓`、`Enter`、`Esc`。
 
-不要要求普通用户安装 Python/Rust、运行命令、填写 JSON、repo_id、资源组 ID、plan identity 或 APPLY/RESUME challenge。中文向导内部完成目标编号、计划签名、远端基线与安全确认。
+首页必须包含：
 
-首页入口：查看和搜索资料、合并几份资料、拆分一份资料、查看任务记录、系统检查。
+- 从教务系统更新数据；
+- 查看和搜索资料；
+- 管理远端仓库；
+- 合并几份资料；
+- 拆分一份资料；
+- 查看任务记录；
+- 系统检查；
+- 退出。
 
-### Agent 或维护人员
+不得要求普通用户安装 Python/Rust、运行命令、输入 JSON、repo_id、resource_group_id、identity、commit/tree 或 APPLY/RESUME challenge。
 
-生产运行时是 `repository-tui` 中的原生 Rust `Manager`，直接读取：
+## 教务更新契约
 
-```text
-data/repository-manifest.no-collection.v4.json
-config/repository-topology.v4.json
-config/repository-file-routes.v4.json
-data/repository-management-operations/   # 可不存在
-```
+生产运行时默认使用 `http://jwts-hit-edu-cn.ivpn.hit.edu.cn:1080`：
 
-Rust Manager 负责 inspect/search/detail/split-options/plan/apply/resume/verify、Git tree、远端基线和 journal。不得绕过 Manager 直接修改 topology/routes 或调用 GitHub mutation。
+1. Cookie 仅存在 `UpdateSession` 内存，离开更新向导即释放，不写盘、不进日志；
+2. GET `/pyfa/queryPykc` 读取年级和院系；
+3. POST `/pub/queryYxzyList_bbh` 读取专业；
+4. POST `/pyfa/queryPykc` 分页抓取课程；
+5. 识别 401/403、登录重定向、ATrust 和统一身份认证页面；
+6. staging 与生产状态同盘，完整校验后才生成差异；
+7. duplicate 和无代码课程按 occurrence 对齐，不折叠；
+8. 每项变化选择接受或保留现状，支持批量；
+9. 物化后增量重建 plans/records/descriptors/indexes/topology/routes；
+10. 先同步 Registry 和远端仓库并验证，最后原子切换本地三文件。
 
-Python 脚本只用于离线 manifest 生成、历史审计和行为对照；不进入普通用户发行包，不是生产运行时依赖。
+## 增量映射规则
 
-## 人类向导契约
+- 既有课程代码保留 resource group、physical repository 和 repo 绑定；
+- 新代码优先复用规范同名资源组；
+- 否则创建稳定资源组，并优先映射 offering college/school 对应无资料 bucket；
+- 无法归类才规划稳定 `MANAGED-*` 仓；
+- 移除代码不删除有资料仓；仅无文件且不再承载课程的仓进入归档预览；
+- course_code_routes、curriculum records/descriptors/indexes 必须全量一致。
 
-- 合并：中文列表勾选至少两份 → 填结果中文名 → 自然语言预览 → 确认执行。
-- 拆分：选择资料 → 选择数量 → 逐项给中文课程组/零散文件选去向 → 填中文名 → 预览 → 确认。
-- 任务记录：仅 `resumable` 显示“可以继续”，completed 可检查结果，drifted/invalid 停止。
-- 系统检查：浏览始终离线可用；变更时自然语言提示 Git/GitHub 状态。
+## Registry 与远端仓库生命周期
 
-界面不得展示 repo_id、JSON、identity、journal、APPLY、RESUME、commit/tree 或错误码。技术信息只存于内部计划、任务记录和 Agent 审计结果。
-
-## 安全不变量
-
-Rust Manager 必须同时保证：
-
-- topology/routes schema、generation、仓库和路径唯一性有效；
-- split 源库存完整，课程组完整互斥，跨组/零散文件显式分配，目标非空；
-- merge 至少两个完整源，同名路径 relocation，不静默覆盖；
-- 文件路由与 course_code_routes 同步迁移；
-- 计划绑定 workspace identity、GitHub actor、Registry、源/目标 exists/head/tree 和 remote URL；
-- plan identity 可从内容重算；计划不可变；
-- journal 校验 operation/kind/status、remote URL、expected HEAD、resolved routes hash、Git target status/commit；
-- 新目标仓可幂等创建，已创建空仓的中断可恢复，非空目标不得覆盖；
-- Git 以精确 blob→tree→commit 构造并核对远端 main；
-- topology 后 routes 分阶段原子切换；漂移即停止。
-
-## 发行验证
-
-Windows ZIP 只能包含：
+Registry 固定动态树：
 
 ```text
-薪火资料管理.exe
-启动薪火资料管理.cmd
-请先看我.txt
-config/repository-topology.v4.json
-config/repository-file-routes.v4.json
-data/repository-manifest.no-collection.v4.json
+repository-manifest.json
+repository-topology.v4.json
+repository-file-routes.v4.json
+curriculum/plans/<encoded>.json
+curriculum/records/<record-id>.json
+curriculum/descriptors/<encoded>.json
+indexes/by-plan.json
+indexes/pending-course-code.json
 ```
 
-不得包含 `.py`、`.pyc`、scripts 或 Python 运行时。
+执行顺序：校验预览 → 写 update journal/bundle → clone Registry → 清理并写动态树 → commit/push/verify → 仓库 create/update/archive/unarchive → description/visibility/template/default branch 校验 → 最终 verify → 本地三文件原子切换 → completed。
 
-必须运行：
+每次计划冻结 workspace、GitHub actor、Registry、源/目标仓 exists/head/tree 和 remote URL。任务记录必须可跨重启恢复；漂移、篡改或目标非空时停止。
+
+## Agent 与维护人员
+
+生产运行时为单一 Rust `Manager`；Python 仅离线生成、历史审计和行为 oracle。不得绕过 Manager 直接改 manifest/topology/routes 或调用 GitHub mutation。
+
+关键接口：
+
+- `begin_curriculum_update` / `update_majors` / `stage_curriculum_update`；
+- `UpdateSession::set_decision` / `accept_all` / `reject_all`；
+- `materialize_curriculum_update`；
+- `plan_remote_sync` / `execute_remote_sync` / `verify_remote_sync`；
+- `update_journals` 与跨重启恢复；
+- split/merge plan/apply/resume/verify。
+
+## 发行与验证
+
+Windows ZIP 只能包含单一 Rust EXE、`启动薪火仓库管理.cmd`、说明和三份数据文件；不得包含 Python。
+
+必须通过：
 
 ```sh
 cargo test --locked --manifest-path repository-tui/Cargo.toml
 cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --check
+python -m py_compile scripts/*.py tests/*.py
+python -m unittest tests/test_fireworks_manager_core.py
+python -m unittest tests/test_fireworks_manager_state_machine.py tests/test_repository_management.py
 ```
 
-Rust 测试应覆盖中文首页、纯方向键路径、技术标识隐藏、真实 v4 语义拆分、自动目标 ID、bare-remote split/merge、课程路由、actor/Registry/tree baseline、目标建仓、空仓恢复、journal 防篡改和 verify。
-
-技术字段与旧 JSON 行为对照见 references；普通用户沟通不要引用这些文件内容。
+Rust 测试必须覆盖模拟教务 HTTP 完整请求链、Cookie/认证、分页、差异决策、增量重建、Registry bare-remote、仓库生命周期、update journal 恢复、中文八项首页和 split/merge 状态机。

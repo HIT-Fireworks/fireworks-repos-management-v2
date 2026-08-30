@@ -15,7 +15,7 @@ fn main() -> Result<()> {
             "--check" => check = true,
             "-h" | "--help" => {
                 println!(
-                    "薪火资料管理 [--workspace PATH] [--check]\n\n\
+                    "薪火仓库管理 [--workspace PATH] [--check]\n\n\
                      普通使用请直接双击启动，无需参数。\n\
                      --workspace PATH  仅供维护人员指定数据目录\n\
                      --check           检查安装包是否完整"

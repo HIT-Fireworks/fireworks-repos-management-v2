@@ -1,121 +1,92 @@
-# 薪火资料管理
+# 薪火仓库管理
 
-这是给普通人使用的 HIT-Fireworks 资料管理工具。**不需要会写代码，不需要安装 Python 或 Rust，也不需要输入 JSON、仓库编号、哈希值或确认口令。**
+这是 HIT-Fireworks 的完整仓库管理工具。普通用户不需要会写代码，不需要安装 Python 或 Rust，也不需要输入 JSON、仓库编号、哈希或确认口令。
 
-## 最简单的使用方法
+## 下载和启动
 
-1. 在 GitHub Releases 下载 `fireworks-manager-windows.zip`。
-2. 完整解压 ZIP。
-3. 双击 `启动薪火资料管理.cmd`。
-4. 只使用：
-   - `↑` / `↓`：选择；
-   - `Enter`：确认；
-   - `Esc`：返回。
+1. 在 GitHub Releases 下载 `fireworks-repository-manager-windows.zip`；
+2. 完整解压 ZIP；
+3. 双击 `启动薪火仓库管理.cmd`；
+4. 使用 `↑` / `↓` 选择、`Enter` 确认、`Esc` 返回。
 
-首页提供五件事：
+## 首页功能
 
-- 查看和搜索资料；
-- 合并几份资料；
-- 拆分一份资料；
-- 查看任务记录；
-- 系统检查。
+- **从教务系统更新数据**：连接哈尔滨工业大学本部教务系统，选择年级、院系和专业，抓取培养方案与课程；
+- **查看和搜索资料**：按课程名或资料名浏览当前仓库；
+- **管理远端仓库**：预览并同步 Registry、创建缺失仓库、修正描述/公开性/template/default branch、归档不再使用的空仓；
+- **合并几份资料**：中文列表多选、填写结果名、预览后执行；
+- **拆分一份资料**：把中文课程组和零散文件分配到若干目标；
+- **查看任务记录**：恢复中断的教务更新、Registry/仓库同步、合并或拆分；
+- **系统检查**：检查离线数据、Git 与 GitHub 登录状态；
+- **退出**。
 
-查看资料完全离线可用。合并或拆分资料时，系统检查页会用中文提示是否需要安装 Git 或登录 GitHub。
+## 从教务系统更新数据
 
-## 普通用户会看到什么
+1. 在浏览器中登录教务系统；
+2. 在向导中临时粘贴 Cookie。Cookie 只保存在当前进程内存中，不写入磁盘；
+3. 选择年级、院系和专业；
+4. 程序默认使用备用地址 `http://jwts-hit-edu-cn.ivpn.hit.edu.cn:1080`，分页抓取课程并先写入同盘 staging；
+5. 对新增、删除和修改逐条选择“接受教务变化”或“保留当前数据”，也可批量处理；
+6. 程序物化选择并增量重建培养方案、课程记录、课程描述、索引、拓扑和课程路由；
+7. 查看自然语言仓库变更预览；
+8. 确认后依次同步 Registry、管理远端仓库、验证远端，再原子切换本地三份状态文件。
 
-### 查看资料
+认证失效时，程序会识别 401/403、登录重定向、ATrust 或统一身份认证页面，并用中文要求重新登录；不会把登录页当成课程数据。
 
-按课程名或资料名称搜索，查看课程名称、文件数量、占用空间和清点状态。界面以中文名称为主，不显示内部仓库编号。
+## 数据与仓库同步
 
-### 合并资料
+更新过程维护：
 
-1. 在中文资料列表中按 Enter 勾选至少两份；
-2. 填写合并后的中文名称；
-3. 查看“会发生什么”的自然语言预览；
-4. 选择“确认执行”。
+- `curriculum_plans`、`curriculum_records`、`course_descriptors`；
+- `indexes/by-plan.json`、`indexes/pending-course-code.json`；
+- `repository-manifest.json`、`repository-topology.v4.json`、`repository-file-routes.v4.json`；
+- Registry 的 `curriculum/plans`、`records`、`descriptors` 动态树；
+- GitHub 仓库的创建、description、公开性、archive、template 和默认分支。
 
-同名文件不会覆盖，工具会自动放入独立目录。内部目标编号、计划身份和安全确认由程序生成并处理，不要求用户理解或抄写。
+既有课程代码保留资源组、物理仓和 repo 绑定；新代码优先复用同名资源组，否则创建稳定资源组并映射学院无资料仓。课程从教务系统消失时，不删除有资料仓；只有无文件且不再承载课程的仓库才进入归档预览。
 
-### 拆分资料
+## 安全与恢复
 
-1. 选择一份已完成文件清点、包含多个独立内容组的资料；
-2. 选择拆成几份；
-3. 用左右方向键给每个中文课程组或零散文件选择去向；
-4. 给每份结果填写中文名称；
-5. 查看预览并确认。
-
-工具会自动生成内部目标编号、完整分区、文件移动和课程路由，不要求输入 JSON 或资源组 ID。
-
-### 任务记录
-
-程序中断或网络失败后，首页进入“任务记录”。如果可以安全继续，界面显示“可以继续”；按 Enter 即可恢复。已完成任务可以再次检查最终结果。资料已变化或任务记录被修改时，程序拒绝自动继续并提示联系维护人员。
-
-## 安全设计
-
-人类界面隐藏技术细节，但不会降低安全门禁：
-
-- 操作前冻结本地 manifest/topology/routes 身份；
-- 校验源仓库和目标仓库远端版本；
-- 计划内容带 SHA-256 身份，任务记录被修改会拒绝；
-- 文件使用精确 Git tree 构造，不覆盖同名内容；
-- 最终远端 HEAD 写入独立的 `resolved_after_routes`，原计划保持不变；
-- topology 和 routes 分阶段原子写入，可在中断后继续；
+- 操作前冻结本地状态、GitHub actor、Registry 和每个源/目标仓库的 exists/HEAD/tree；
+- 计划和任务记录带内容身份，篡改后拒绝继续；
+- Registry 先 clone、写固定动态树、commit、push 并校验；
+- 仓库动作逐项记录，可在程序中断后恢复；
+- 远端全部验证完成后，才原子切换本地 manifest/topology/routes；
+- split/merge 使用精确 Git blob→tree→commit，不静默覆盖同名文件；
 - 任何本地或远端漂移都会停止。
 
-## 单一 Rust 运行时
+## Windows 发行包
 
-发行包只包含：
+普通用户包只包含：
 
 ```text
-薪火资料管理.exe
-启动薪火资料管理.cmd
+薪火仓库管理.exe
+启动薪火仓库管理.cmd
 请先看我.txt
 config/repository-topology.v4.json
 config/repository-file-routes.v4.json
 data/repository-manifest.no-collection.v4.json
 ```
 
-生产运行时是单一 Rust 可执行文件，不启动 Python 子进程。程序自动从可执行文件同目录发现数据。
+生产运行时是单一 Rust EXE。Python 仅保留在源码仓中，用于离线生成、历史审计和行为对照，不进入发行包。
 
-Python 文件仍保留在源码仓中，仅用于：
+## 当前快照
 
-- 离线生成和审计 manifest；
-- 验证历史迁移；
-- 作为迁移到 Rust 期间的行为对照。
-
-它们不进入 Windows 普通用户发行包。
-
-## 当前数据
-
-随发行包附带的 v4 快照包含：
-
-- 100 个资料仓库；
+- 100 个仓库；
+- 211 个培养方案；
+- 10,468 条课程记录；
 - 2,618 条课程代码路由；
 - 3,857 条文件路由；
-- 75 个已完成文件清点的仓库；
-- 16 个虚拟集合；
-- 18 条 special-topic 路由。
+- 75 个已完成文件清点的仓库。
 
-## 维护人员开发
+## 维护人员验证
 
 ```sh
 cargo test --locked --manifest-path repository-tui/Cargo.toml
 cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --check
-```
-
-可选 `--workspace PATH` 仅供测试外部数据目录；普通用户无需任何参数。
-
-Python 行为对照：
-
-```sh
 python -m py_compile scripts/*.py tests/*.py
 python -m unittest tests/test_fireworks_manager_core.py
 python -m unittest tests/test_fireworks_manager_state_machine.py tests/test_repository_management.py
 ```
 
-Rust 测试覆盖中文首页、纯方向键向导、内部标识隐藏、语义拆分、自动目标编号、原生 bare-remote Git 迁移、课程路由更新、journal 防篡改、恢复和最终验证。
-
-## Agent Skill
-
-`skills/hit-fireworks-repository-management/` 仍供 Agent 使用。Agent 可以读取技术 identity 和 journal，但人类 TUI 不展示这些字段。两者使用相同 v4 状态和安全不变量。
+Rust 测试覆盖模拟教务 HTTP 完整请求链、认证失效、200+1 分页、Cookie 请求头、duplicate/无代码 occurrence 差异、accept/reject、增量重建、Registry bare-remote、仓库生命周期、update journal 跨重启恢复、中文八项首页和 split/merge 状态机。
