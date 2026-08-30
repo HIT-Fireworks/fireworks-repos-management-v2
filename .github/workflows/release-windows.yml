@@ -37,7 +37,7 @@ jobs:
           3. 使用方向键选择，Enter 确认，Esc 返回。
 
           查看仓库和现有数据完全离线可用。
-          更新教务数据时，需要先在浏览器登录教务系统并临时粘贴 Cookie（不会写入磁盘）。
+          更新教务数据时，程序会打开独立的 Microsoft Edge 或 Google Chrome 登录窗口并自动检测登录结果；无需复制 Cookie，登录状态不会写入磁盘。
           同步 Registry 或远端仓库时，系统检查页会提示是否需要 Git 或 GitHub 登录。
           "@ | Set-Content -Encoding utf8 "$package/请先看我.txt"
           Compress-Archive -Path "$package/*" -DestinationPath "dist/fireworks-repository-manager-windows.zip" -Force

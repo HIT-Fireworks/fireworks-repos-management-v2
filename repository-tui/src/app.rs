@@ -1,6 +1,9 @@
 use anyhow::anyhow;
 use std::collections::BTreeSet;
 use std::io::{self, stdout};
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -39,7 +42,7 @@ const HOME_ITEMS: [&str; 8] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Page {
     Home,
-    UpdateCookie,
+    UpdateLogin,
     UpdateGrade,
     UpdateCollege,
     UpdateMajors,
@@ -73,6 +76,17 @@ enum ReviewOrigin {
 enum UnifiedTask {
     Repository(JournalSummary),
     Update(UpdateExecutionJournal),
+}
+type LoginRunner = fn(&AtomicBool) -> Result<UpdateSession, String>;
+
+fn run_browser_login(cancelled: &AtomicBool) -> Result<UpdateSession, String> {
+    let cookie = crate::browser_login::BrowserLogin::capture_cookie(
+        crate::jwts::DEFAULT_HIT_BASE_URL,
+        cancelled,
+    )
+    .map_err(|error| error.to_string())?;
+    UpdateSession::connect(crate::jwts::DEFAULT_HIT_BASE_URL, &cookie)
+        .map_err(|error| error.to_string())
 }
 
 struct UiState {
@@ -108,6 +122,13 @@ struct UiState {
     update_preview: Option<RepositorySyncPreview>,
     remote_preview: Option<RepositoryLifecyclePreview>,
     update_journals: Vec<UpdateExecutionJournal>,
+    login_job: Option<LoginJob>,
+    login_runner: LoginRunner,
+}
+
+struct LoginJob {
+    cancelled: Arc<AtomicBool>,
+    result: Receiver<Result<UpdateSession, String>>,
 }
 
 impl UiState {
@@ -155,6 +176,8 @@ impl UiState {
             update_preview: None,
             remote_preview: None,
             update_journals,
+            login_job: None,
+            login_runner: run_browser_login,
         }
     }
 
@@ -236,6 +259,7 @@ impl UiState {
     }
 
     fn clear_update(&mut self) {
+        self.cancel_login();
         self.update_session = None;
         self.update_majors.clear();
         self.selected_majors.clear();
@@ -259,11 +283,7 @@ impl UiState {
 
     fn open_home_item(&mut self) -> bool {
         match self.home_index {
-            0 => {
-                self.clear_update();
-                self.page = Page::UpdateCookie;
-                self.notice = "登录信息只保存在内存，离开向导后立即丢弃".to_string();
-            }
+            0 => self.start_login(),
             1 => {
                 self.page = Page::Browse;
                 self.browse_index = 0;
@@ -308,18 +328,51 @@ impl UiState {
         }
     }
 
-    fn connect_update(&mut self) {
-        let cookie = std::mem::take(&mut self.input);
-        match self.dashboard.client.begin_curriculum_update(&cookie) {
-            Ok(session) => {
+    fn start_login(&mut self) {
+        self.cancel_login();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = Arc::clone(&cancelled);
+        let runner = self.login_runner;
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(runner(&worker_cancelled));
+        });
+        self.login_job = Some(LoginJob {
+            cancelled,
+            result: receiver,
+        });
+        self.page = Page::UpdateLogin;
+        self.notice = "正在打开隔离浏览器……登录完成后会自动继续。按 Esc 取消。".to_string();
+    }
+
+    fn cancel_login(&mut self) {
+        if let Some(job) = self.login_job.take() {
+            job.cancelled
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    fn poll_login(&mut self) {
+        let result = match self.login_job.as_ref() {
+            Some(job) => job.result.try_recv(),
+            None => return,
+        };
+        match result {
+            Ok(Ok(session)) => {
+                self.login_job = None;
                 self.update_session = Some(session);
                 self.update_grade_index = 0;
                 self.page = Page::UpdateGrade;
-                self.notice = "请选择培养方案版本或年级".to_string();
+                self.notice = "登录成功，请选择培养方案版本或年级。".to_string();
             }
-            Err(error) => {
-                self.input.clear();
-                self.notice = human_error(&error);
+            Ok(Err(error)) => {
+                self.login_job = None;
+                self.notice = human_error(&anyhow!(error));
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.login_job = None;
+                self.notice = "登录窗口连接已结束，请按 Enter 重试。".to_string();
             }
         }
     }
@@ -900,7 +953,6 @@ impl UiState {
 
     fn submit_text(&mut self) {
         match self.page {
-            Page::UpdateCookie => self.connect_update(),
             Page::BrowseSearch => {
                 let query = self.input.trim().to_string();
                 match self.dashboard.search(query) {
@@ -966,6 +1018,7 @@ where
 {
     let mut state = UiState::new(workspace);
     loop {
+        state.poll_login();
         terminal.draw(|frame| draw(frame, &state))?;
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
@@ -981,7 +1034,7 @@ where
 fn handle_key(state: &mut UiState, key: KeyEvent) -> bool {
     if matches!(
         state.page,
-        Page::UpdateCookie | Page::BrowseSearch | Page::MergeName | Page::SplitName
+        Page::BrowseSearch | Page::MergeName | Page::SplitName
     ) {
         match key.code {
             KeyCode::Enter => state.submit_text(),
@@ -1036,6 +1089,7 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> bool {
         }
         KeyCode::Enter => match state.page {
             Page::Home => return state.open_home_item(),
+            Page::UpdateLogin => state.start_login(),
             Page::UpdateGrade => state.choose_grade(),
             Page::UpdateCollege => state.choose_college(),
             Page::UpdateMajors => state.toggle_major(),
@@ -1096,7 +1150,7 @@ fn draw(frame: &mut Frame<'_>, state: &UiState) {
     );
     match state.page {
         Page::Home => draw_home(frame, vertical[1], state),
-        Page::UpdateCookie => draw_cookie_input(frame, vertical[1], state),
+        Page::UpdateLogin => draw_login_status(frame, vertical[1], state),
         Page::UpdateGrade => draw_options(
             frame,
             vertical[1],
@@ -1168,7 +1222,7 @@ fn draw(frame: &mut Frame<'_>, state: &UiState) {
 fn page_title(page: Page) -> &'static str {
     match page {
         Page::Home => "首页",
-        Page::UpdateCookie
+        Page::UpdateLogin
         | Page::UpdateGrade
         | Page::UpdateCollege
         | Page::UpdateMajors
@@ -1236,14 +1290,37 @@ fn draw_home(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
     );
 }
 
-fn draw_cookie_input(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
-    let masked = "●".repeat(state.input.chars().count().min(48));
-    draw_text_input(
-        frame,
+fn draw_login_status(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
+    let status = if state.login_job.is_some() {
+        "正在等待浏览器登录完成……"
+    } else {
+        "登录未完成。按 Enter 重新打开登录窗口。"
+    };
+    let lines = vec![
+        Line::raw(""),
+        Line::styled(
+            "请在弹出的浏览器中完成哈尔滨工业大学统一身份认证",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(""),
+        Line::raw(status),
+        Line::raw("程序会自动检测登录结果，无需复制 Cookie。"),
+        Line::raw("浏览器使用独立临时数据目录；登录状态只保存在内存中。"),
+        Line::raw(""),
+        Line::raw("Enter：重试    Esc：取消并返回"),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .alignment(ratatui::layout::Alignment::Center)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" 教务系统登录 "),
+            ),
         area,
-        "教务系统登录信息",
-        "请从已登录教务系统的浏览器复制 Cookie。它只保存在内存，离开向导即丢弃。",
-        &masked,
     );
 }
 
@@ -1939,9 +2016,9 @@ mod tests {
         assert!(text.contains("拆分一份资料"));
     }
     #[test]
-    fn cookie_is_masked_on_screen() {
+    fn login_page_never_displays_cookie_input() {
         let mut state = test_state();
-        state.page = Page::UpdateCookie;
+        state.page = Page::UpdateLogin;
         state.input = "SESSION=secret".to_string();
         let backend = TestBackend::new(100, 28);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -1952,15 +2029,75 @@ mod tests {
             .content()
             .iter()
             .map(|cell| cell.symbol())
+            .collect::<String>()
+            .chars()
+            .filter(|character| !character.is_whitespace())
             .collect::<String>();
         assert!(!text.contains("SESSION=secret"));
-        assert!(text.contains('●'));
+        assert!(text.contains("无需复制Cookie"));
     }
     #[test]
     fn first_time_user_can_open_update_with_enter() {
         let mut state = test_state();
+        state.login_runner = |_| Err("测试结束".to_string());
         handle_key(&mut state, press(KeyCode::Enter));
-        assert_eq!(state.page, Page::UpdateCookie);
+        assert_eq!(state.page, Page::UpdateLogin);
+    }
+    #[test]
+    fn automatic_login_page_ignores_cookie_typing() {
+        let mut state = test_state();
+        state.page = Page::UpdateLogin;
+        handle_key(&mut state, press(KeyCode::Char('S')));
+        assert!(state.input.is_empty());
+    }
+
+    #[test]
+    fn cancelling_login_does_not_wait_for_worker() {
+        let mut state = test_state();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let (_sender, receiver) = mpsc::channel::<Result<UpdateSession, String>>();
+        state.login_job = Some(LoginJob {
+            cancelled: Arc::clone(&cancelled),
+            result: receiver,
+        });
+
+        let started = std::time::Instant::now();
+        state.go_home();
+
+        assert!(cancelled.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(started.elapsed() < Duration::from_millis(100));
+    }
+    #[test]
+    fn completed_login_opens_grade_selection() {
+        let mut state = test_state();
+        let (sender, receiver) = mpsc::channel();
+        let session = UpdateSession {
+            client: crate::jwts::JwtsClient::new(crate::jwts::DEFAULT_HIT_BASE_URL, "SESSION=test")
+                .unwrap(),
+            catalog: crate::jwts::CurriculumCatalog {
+                grades: vec![CatalogOption {
+                    code: "2025".to_string(),
+                    name: "2025 级".to_string(),
+                }],
+                colleges: Vec::new(),
+            },
+            selections: Vec::new(),
+            candidate: None,
+            diff: None,
+            decisions: crate::curriculum::DecisionSet::default(),
+            status: crate::state::CurriculumUpdateStatus::default(),
+        };
+        sender.send(Ok(session)).unwrap();
+        state.page = Page::UpdateLogin;
+        state.login_job = Some(LoginJob {
+            cancelled: Arc::new(AtomicBool::new(false)),
+            result: receiver,
+        });
+
+        state.poll_login();
+
+        assert_eq!(state.page, Page::UpdateGrade);
+        assert_eq!(state.update_session.unwrap().catalog.grades[0].code, "2025");
     }
     #[test]
     fn review_hides_internal_identifiers() {

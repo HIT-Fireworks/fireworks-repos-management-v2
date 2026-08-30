@@ -1,4 +1,5 @@
 pub mod app;
+pub mod browser_login;
 pub mod curriculum;
 pub mod jwts;
 pub mod state;
