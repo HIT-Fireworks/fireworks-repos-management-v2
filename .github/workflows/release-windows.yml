@@ -1,10 +1,10 @@
-name: Build Windows easy-use package
+name: Build Windows repository manager
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - "easy-v*"
+      - "manager-v*"
 
 permissions:
   contents: write
