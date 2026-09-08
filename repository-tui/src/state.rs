@@ -1,21 +1,47 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde::ser::{SerializeMap, SerializeSeq};
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
 use unicode_normalization::UnicodeNormalization;
+use base64::Engine;
 
 const DEFAULT_MANIFEST: &str = "data/repository-manifest.no-collection.v4.json";
 const DEFAULT_TOPOLOGY: &str = "config/repository-topology.v4.json";
 const DEFAULT_ROUTES: &str = "config/repository-file-routes.v4.json";
 const DEFAULT_OPERATIONS: &str = "data/repository-management-operations";
 const DEFAULT_REMOTE_TEMPLATE: &str = "https://github.com/{organization}/{repo_id}.git";
+const CURRICULUM_REVIEW_DIRECTORY: &str = "curriculum-reviews";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum CourseAssignment {
+    Existing { repo_id: String },
+    New { title: String },
+    NewGroup { repo_id: String, title: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CourseRepositoryChoice {
+    pub course_code: String,
+    pub course_name: String,
+    pub offering_colleges: Vec<String>,
+    pub suggested_repo_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CurriculumReviewSummary {
+    pub path: String,
+    pub title: String,
+    pub updated_at: String,
+    pub pending_changes: usize,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Health {
@@ -181,6 +207,10 @@ pub struct RepositorySyncPreview {
     pub manifest: Value,
     pub topology: Value,
     pub routes: Value,
+    #[serde(default)]
+    pub baseline: Value,
+    #[serde(default)]
+    pub identity_sha256: String,
     pub create_repositories: Vec<String>,
     pub archive_repositories: Vec<String>,
     pub metadata_repositories: Vec<String>,
@@ -219,6 +249,10 @@ pub struct RepositoryLifecycleAction {
     pub archived: bool,
     pub template: bool,
     pub default_branch: String,
+    #[serde(default)]
+    pub readme: Option<String>,
+    #[serde(default)]
+    pub template_repository: Option<String>,
     pub baseline: Value,
 }
 
@@ -249,30 +283,41 @@ pub struct UpdateExecutionJournal {
 
 #[derive(Debug, Clone)]
 pub struct UpdateSession {
-    pub client: crate::jwts::JwtsClient,
+    pub client: Option<crate::jwts::JwtsClient>,
+    pub kind: crate::jwts::PlanKind,
     pub catalog: crate::jwts::CurriculumCatalog,
     pub selections: Vec<crate::jwts::CrawlSelection>,
     pub candidate: Option<crate::jwts::CandidateSnapshot>,
     pub diff: Option<crate::curriculum::CurriculumDiff>,
     pub decisions: crate::curriculum::DecisionSet,
+    pub assignments: BTreeMap<String, CourseAssignment>,
     pub status: CurriculumUpdateStatus,
 }
 
 impl UpdateSession {
-    pub fn connect(base_url: &str, cookie: &str) -> Result<Self> {
-        let client = crate::jwts::JwtsClient::new(base_url, cookie)?;
-        let catalog = client.catalog()?;
+    pub fn connect(base_url: &str, cookie: &str, kind: crate::jwts::PlanKind) -> Result<Self> {
+        Self::from_client(crate::jwts::JwtsClient::new(base_url, cookie)?, kind)
+    }
+
+    pub fn from_client(
+        client: crate::jwts::JwtsClient,
+        kind: crate::jwts::PlanKind,
+    ) -> Result<Self> {
+        let catalog = client.catalog(kind)?;
+        let base_url = client.base_url().to_string();
         Ok(Self {
-            client,
+            client: Some(client),
+            kind,
             catalog,
             selections: Vec::new(),
             candidate: None,
             diff: None,
             decisions: crate::curriculum::DecisionSet::default(),
+            assignments: BTreeMap::new(),
             status: CurriculumUpdateStatus {
                 stage: "connected".to_string(),
-                message: "已连接教务系统".to_string(),
-                base_url: base_url.to_string(),
+                message: format!("已连接教务系统，来源：{}", kind.label()),
+                base_url,
                 updated_at: now(),
                 ..CurriculumUpdateStatus::default()
             },
@@ -293,6 +338,7 @@ impl UpdateSession {
         self.decisions
             .decisions
             .insert(change.change_id.clone(), decision);
+        self.assignments.clear();
         self.status.pending_decision_count = diff
             .changes
             .len()
@@ -305,6 +351,7 @@ impl UpdateSession {
         let diff = self.diff.as_ref().context("尚未生成教务差异")?;
         self.decisions =
             crate::curriculum::default_decisions(diff, crate::curriculum::Decision::Accept);
+        self.assignments.clear();
         self.status.pending_decision_count = 0;
         self.status.updated_at = now();
         Ok(())
@@ -314,6 +361,7 @@ impl UpdateSession {
         let diff = self.diff.as_ref().context("尚未生成教务差异")?;
         self.decisions =
             crate::curriculum::default_decisions(diff, crate::curriculum::Decision::Reject);
+        self.assignments.clear();
         self.status.pending_decision_count = 0;
         self.status.updated_at = now();
         Ok(())
@@ -328,6 +376,7 @@ pub struct Manager {
     routes_path: PathBuf,
     operations_path: PathBuf,
     remote_template: String,
+    registry_remote: Option<String>,
     manifest: Value,
     topology: Value,
     routes: Value,
@@ -349,6 +398,7 @@ impl Manager {
             routes_path,
             operations_path,
             remote_template,
+            registry_remote: std::env::var("FIREWORKS_REGISTRY_REMOTE").ok(),
             manifest: Value::Null,
             topology: Value::Null,
             routes: Value::Null,
@@ -357,6 +407,11 @@ impl Manager {
 
     pub fn with_remote_template(mut self, template: impl Into<String>) -> Self {
         self.remote_template = template.into();
+        self
+    }
+
+    pub fn with_registry_remote(mut self, remote: impl Into<String>) -> Self {
+        self.registry_remote = Some(remote.into());
         self
     }
 
@@ -400,16 +455,45 @@ impl Manager {
     pub fn workspace(&self) -> &Path {
         &self.workspace
     }
-    pub fn begin_curriculum_update(&self, cookie: &str) -> Result<UpdateSession> {
-        UpdateSession::connect(crate::jwts::DEFAULT_HIT_BASE_URL, cookie)
+    pub fn begin_curriculum_update(
+        &self,
+        cookie: &str,
+        kind: crate::jwts::PlanKind,
+    ) -> Result<UpdateSession> {
+        UpdateSession::connect(crate::jwts::DEFAULT_HIT_BASE_URL, cookie, kind)
     }
 
     pub fn begin_curriculum_update_at(
         &self,
         base_url: &str,
         cookie: &str,
+        kind: crate::jwts::PlanKind,
     ) -> Result<UpdateSession> {
-        UpdateSession::connect(base_url, cookie)
+        let mut session = UpdateSession::connect(base_url, cookie, kind)?;
+        session.status.base_url = base_url.to_string();
+        Ok(session)
+    }
+
+    pub fn select_source_kind(
+        &self,
+        session: &mut UpdateSession,
+        kind: crate::jwts::PlanKind,
+    ) -> Result<()> {
+        let client = session
+            .client
+            .as_ref()
+            .context("恢复的审阅任务不能重新抓取，请新建更新任务")?;
+        session.catalog = client.catalog(kind)?;
+        session.kind = kind;
+        session.selections.clear();
+        session.candidate = None;
+        session.diff = None;
+        session.decisions = crate::curriculum::DecisionSet::default();
+        session.assignments.clear();
+        session.status.stage = "connected".to_string();
+        session.status.message = format!("已切换来源：{}", kind.label());
+        session.status.updated_at = now();
+        Ok(())
     }
 
     pub fn update_majors(
@@ -418,7 +502,11 @@ impl Manager {
         grade: &str,
         college_code: &str,
     ) -> Result<Vec<crate::jwts::CatalogOption>> {
-        session.client.majors(college_code, grade)
+        session
+            .client
+            .as_ref()
+            .context("恢复的审阅任务不能重新抓取，请新建更新任务")?
+            .majors(session.kind, college_code, grade)
     }
 
     pub fn stage_curriculum_update(
@@ -426,49 +514,134 @@ impl Manager {
         session: &mut UpdateSession,
         selections: Vec<crate::jwts::CrawlSelection>,
     ) -> Result<()> {
-        if selections.is_empty() {
-            bail!("请至少选择一个专业")
+        self.require_current_workspace()?;
+        validate_crawl_selections(session, &selections)?;
+        let client = session
+            .client
+            .as_ref()
+            .context("恢复的审阅任务不能重新抓取，请新建更新任务")?;
+        let mut plans = Vec::with_capacity(selections.len());
+        for selection in &selections {
+            let plan = client.fetch_plan(selection)?;
+            validate_captured_plan(&plan, selection)?;
+            plans.push(plan);
         }
-        let baseline = crate::curriculum::baseline_snapshot(&self.manifest)?;
-        let selected_plan_ids = selections
+        let captured = crate::jwts::CandidateSnapshot {
+            generated_at: now(),
+            base_url: client.base_url().to_string(),
+            plans,
+        };
+        self.stage_curriculum_snapshot(session, selections, captured)
+    }
+
+    pub fn stage_curriculum_snapshot(
+        &self,
+        session: &mut UpdateSession,
+        selections: Vec<crate::jwts::CrawlSelection>,
+        captured: crate::jwts::CandidateSnapshot,
+    ) -> Result<()> {
+        self.require_current_workspace()?;
+        validate_crawl_selections(session, &selections)?;
+        validate_snapshot_source(&captured.base_url, &session.status.base_url)?;
+        if captured.generated_at.trim().is_empty() {
+            bail!("候选快照缺少真实采集时间")
+        }
+
+        let mut selected = selections
             .iter()
-            .map(|selection| {
-                format!(
-                    "HIT-{}-{}-{}",
-                    selection.grade, selection.college_code, selection.major_code
-                )
+            .map(|selection| (selection.plan_id(), selection))
+            .collect::<BTreeMap<_, _>>();
+        let mut captured_ids = BTreeSet::new();
+        for plan in &captured.plans {
+            if !captured_ids.insert(plan.plan_id.clone()) {
+                bail!("候选快照包含重复计划：{}", plan.plan_id)
+            }
+            let Some(selection) = selected.remove(&plan.plan_id) else {
+                bail!("候选快照包含未选择的额外范围：{}", plan.plan_id)
+            };
+            validate_captured_plan(plan, selection)?;
+        }
+        if !selected.is_empty() {
+            bail!(
+                "候选快照缺少所选计划：{}",
+                selected.keys().cloned().collect::<Vec<_>>().join("、")
+            )
+        }
+
+        let baseline = crate::curriculum::baseline_snapshot(&self.manifest)?;
+        let selection_by_id = selections
+            .iter()
+            .map(|selection| (selection.plan_id(), selection))
+            .collect::<BTreeMap<_, _>>();
+        let crate::jwts::CandidateSnapshot {
+            generated_at,
+            base_url,
+            plans: captured_plans,
+        } = captured;
+        let mut fetched = captured_plans
+            .into_iter()
+            .map(|plan| {
+                let selection = selection_by_id
+                    .get(&plan.plan_id)
+                    .copied()
+                    .expect("候选计划集合已完成一一对应校验");
+                (selection, plan)
             })
-            .collect::<HashSet<_>>();
+            .collect::<Vec<_>>();
+        let mut replaced = BTreeSet::new();
+        for (selection, plan) in &mut fetched {
+            let mut matches = baseline
+                .plans
+                .iter()
+                .filter(|existing| {
+                    existing.plan_id == plan.plan_id
+                        || plan_matches_selection(&existing.info, selection)
+                })
+                .map(|existing| existing.plan_id.clone())
+                .collect::<Vec<_>>();
+            matches.sort();
+            matches.dedup();
+            if matches.len() > 1 {
+                bail!(
+                    "当前数据中有多个同范围旧方案，无法安全替换：{}",
+                    plan.plan_id
+                )
+            }
+            if let Some(existing_id) = matches.first() {
+                plan.plan_id = existing_id.clone();
+                plan.info["plan_id"] = json!(existing_id);
+                if let Some(info) = plan.info.as_object_mut() {
+                    info.remove("plan_ID");
+                }
+            }
+            replaced.extend(matches);
+        }
         let mut plans = baseline
             .plans
             .iter()
-            .filter(|plan| !selected_plan_ids.contains(&plan.plan_id))
+            .filter(|plan| !replaced.contains(&plan.plan_id))
             .cloned()
             .collect::<Vec<_>>();
-        for selection in &selections {
-            plans.push(session.client.fetch_plan(selection)?);
-        }
+        plans.extend(fetched.into_iter().map(|(_, plan)| plan));
         plans.sort_by(|left, right| left.plan_id.cmp(&right.plan_id));
         let candidate = crate::jwts::CandidateSnapshot {
-            generated_at: now(),
-            base_url: session.status.base_url.clone(),
+            generated_at,
+            base_url,
             plans,
         };
+        self.require_current_workspace()?;
         crate::curriculum::validate_snapshot(&candidate)?;
-        let staging = self.workspace.join("data/curriculum-update-staging.json");
-        atomic_json(&staging, &serde_json::to_value(&candidate)?)?;
-        let current = baseline;
-        let diff = crate::curriculum::diff_snapshots(current, candidate.clone())?;
+        let diff = crate::curriculum::diff_snapshots(baseline, candidate.clone())?;
         session.selections = selections;
-
         session.candidate = Some(candidate);
         session.decisions = crate::curriculum::DecisionSet {
             diff_identity_sha256: diff.diff_identity_sha256.clone(),
             decisions: BTreeMap::new(),
         };
+        session.assignments.clear();
         session.status = CurriculumUpdateStatus {
             stage: "review".to_string(),
-            message: "已抓取候选数据，请审阅变化".to_string(),
+            message: "已抓取完整候选数据，请逐条审阅教学差异".to_string(),
             base_url: session.status.base_url.clone(),
             candidate_plan_count: diff.candidate.plans.len(),
             candidate_record_count: diff
@@ -482,6 +655,163 @@ impl Manager {
             updated_at: now(),
         };
         session.diff = Some(diff);
+        self.save_curriculum_review(session)?;
+        Ok(())
+    }
+
+    pub fn course_assignment_targets(&self) -> Result<Vec<RepositorySummary>> {
+        let mut rows = self
+            .repository_rows()?
+            .into_iter()
+            .filter(|row| self.valid_assignment_repository(&row.repo_id))
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            normalize(&left.display_name)
+                .cmp(&normalize(&right.display_name))
+                .then(left.repo_id.cmp(&right.repo_id))
+        });
+        Ok(rows)
+    }
+
+    pub fn pending_course_assignments(
+        &self,
+        session: &UpdateSession,
+    ) -> Result<Vec<CourseRepositoryChoice>> {
+        let snapshot = reviewed_snapshot(session)?;
+        let known = array_at(&self.manifest, "course_descriptors")?
+            .iter()
+            .map(|value| normalize(string_field(value, "course_code")))
+            .collect::<BTreeSet<_>>();
+        let targets = self.course_assignment_targets()?;
+        let mut choices = BTreeMap::<String, (String, BTreeSet<String>)>::new();
+        for plan in &snapshot.plans {
+            for course in &plan.courses {
+                let code = normalized_value(course.get("course_code"));
+                if code.is_empty()
+                    || known.contains(&code)
+                    || session.assignments.contains_key(&code)
+                {
+                    continue;
+                }
+                let name = normalized_value(course.get("course_name"));
+                let college = [
+                    course.get("offering_college"),
+                    course.get("school_name"),
+                    plan.info.get("school_name"),
+                ]
+                .into_iter()
+                .flatten()
+                .map(|value| normalized_value(Some(value)))
+                .find(|value| !value.is_empty())
+                .unwrap_or_default();
+                let entry = choices.entry(code).or_default();
+                if entry.0.is_empty() && !name.is_empty() {
+                    entry.0 = name;
+                }
+                if !college.is_empty() {
+                    entry.1.insert(college);
+                }
+            }
+        }
+        Ok(choices
+            .into_iter()
+            .map(|(course_code, (course_name, offering_colleges))| {
+                let mut suggested_repo_ids = targets
+                    .iter()
+                    .filter(|target| {
+                        (!course_name.is_empty()
+                            && normalize(&target.display_name)
+                                .to_lowercase()
+                                .contains(&normalize(&course_name).to_lowercase()))
+                            || offering_colleges
+                                .iter()
+                                .any(|college| target.display_name.contains(college))
+                    })
+                    .map(|target| target.repo_id.clone())
+                    .collect::<Vec<_>>();
+                suggested_repo_ids.sort();
+                suggested_repo_ids.dedup();
+                CourseRepositoryChoice {
+                    course_code,
+                    course_name,
+                    offering_colleges: offering_colleges.into_iter().collect(),
+                    suggested_repo_ids,
+                }
+            })
+            .collect())
+    }
+
+    pub fn assign_course(
+        &self,
+        session: &mut UpdateSession,
+        course_code: &str,
+        assignment: CourseAssignment,
+    ) -> Result<()> {
+        self.assign_courses(session, BTreeMap::from([(course_code.to_string(), assignment)]))
+    }
+
+    pub fn assign_courses(
+        &self,
+        session: &mut UpdateSession,
+        assignments: BTreeMap<String, CourseAssignment>,
+    ) -> Result<()> {
+        self.require_current_workspace()?;
+        if assignments.is_empty() {
+            bail!("请至少选择一个新增课程的资料归属")
+        }
+        let pending = self.pending_course_assignments(session)?
+            .into_iter()
+            .map(|choice| choice.course_code)
+            .collect::<BTreeSet<_>>();
+        let mut normalized = BTreeMap::new();
+        for (input, assignment) in assignments {
+            let code = normalize(&input);
+            if code.is_empty() || session.assignments.contains_key(&code) || normalized.contains_key(&code) {
+                bail!("课程代码无效、重复或已经完成归属")
+            }
+            if !pending.contains(&code) {
+                bail!("该课程代码不是当前已接受变化中的新增代码：{code}")
+            }
+            match &assignment {
+                CourseAssignment::Existing { repo_id } => {
+                    safe_repo_id(repo_id)?;
+                    if !self.valid_assignment_repository(repo_id) {
+                        bail!("所选仓库不是可用的现有课程资料仓")
+                    }
+                }
+                CourseAssignment::New { title } => {
+                    if normalize(title).is_empty() {
+                        bail!("新课程资料仓标题不能为空")
+                    }
+                }
+                CourseAssignment::NewGroup { repo_id, title } => {
+                    safe_repo_id(repo_id)?;
+                    if normalize(title).is_empty()
+                        || repositories(&self.topology)?.contains_key(repo_id)
+                        || self.manifest_repository(repo_id).is_some()
+                    {
+                        bail!("新资料库标题为空或身份已存在")
+                    }
+                    if normalized.values().chain(session.assignments.values()).any(|existing| {
+                        matches!(existing, CourseAssignment::NewGroup { repo_id: other_id, title: other_title }
+                            if other_id == repo_id && normalize(other_title) != normalize(title))
+                    }) {
+                        bail!("同一新资料库不能指定不同标题")
+                    }
+                }
+            }
+            normalized.insert(code, assignment);
+        }
+        let added = normalized.keys().cloned().collect::<Vec<_>>();
+        session.assignments.extend(normalized);
+        let previous_updated_at = std::mem::replace(&mut session.status.updated_at, now());
+        if let Err(error) = self.save_curriculum_review(session) {
+            for code in added {
+                session.assignments.remove(&code);
+            }
+            session.status.updated_at = previous_updated_at;
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -489,23 +819,239 @@ impl Manager {
         &mut self,
         session: &mut UpdateSession,
     ) -> Result<RepositorySyncPreview> {
-        let diff = session.diff.as_ref().context("尚未生成教务差异")?;
-        let snapshot = crate::curriculum::materialize(diff, &session.decisions)?;
-        crate::curriculum::validate_snapshot(&snapshot)?;
-        let preview = self.rebuild_from_snapshot(&snapshot)?;
-        session.status.stage = "preview".to_string();
-        session.status.message = "已生成仓库变更预览".to_string();
-        session.status.pending_decision_count = 0;
-        session.status.updated_at = now();
+        self.materialize_curriculum_updates(std::slice::from_mut(session))
+    }
+
+    pub fn materialize_curriculum_updates(
+        &mut self,
+        sessions: &mut [UpdateSession],
+    ) -> Result<RepositorySyncPreview> {
+        self.require_current_workspace()?;
+        if sessions.is_empty() {
+            bail!("联合更新至少需要一项审阅")
+        }
+        let baseline = crate::curriculum::baseline_snapshot(&self.manifest)?;
+        let baseline_identity = canonical_sha256(&serde_json::to_value(&baseline)?);
+        let mut plans = baseline.plans.into_iter()
+            .map(|plan| (plan.plan_id.clone(), plan)).collect::<BTreeMap<_, _>>();
+        let mut touched = BTreeSet::new();
+        let mut assignments = BTreeMap::new();
+        let mut reviewed = Vec::with_capacity(sessions.len());
+        for session in sessions.iter() {
+            let diff = session.diff.as_ref().context("审阅缺少差异")?;
+            if canonical_sha256(&serde_json::to_value(&diff.current)?) != baseline_identity {
+                bail!("联合审阅不属于同一正式数据基线")
+            }
+            let snapshot = reviewed_snapshot(session)?;
+            let changed = diff.changes.iter().map(|change| change.plan_id.clone()).collect::<BTreeSet<_>>();
+            for plan_id in &changed {
+                if !touched.insert(plan_id.clone()) {
+                    bail!("联合审阅重复修改同一计划：{plan_id}")
+                }
+            }
+            for (code, assignment) in &session.assignments {
+                if assignments.get(code).is_some_and(|previous| previous != assignment) {
+                    bail!("联合审阅的新课程归属冲突：{code}")
+                }
+                assignments.insert(code.clone(), assignment.clone());
+            }
+            for plan in &snapshot.plans {
+                if changed.contains(&plan.plan_id) {
+                    plans.insert(plan.plan_id.clone(), plan.clone());
+                }
+            }
+            reviewed.push(snapshot);
+        }
+        let snapshot = crate::jwts::CandidateSnapshot {
+            generated_at: now(),
+            base_url: reviewed[0].base_url.clone(),
+            plans: plans.into_values().collect(),
+        };
+        let mut preview = self.rebuild_from_snapshot(&snapshot, &assignments)?;
+        for (session, result) in sessions.iter().zip(&reviewed) {
+            append_curriculum_history(&mut preview.manifest, session.diff.as_ref().unwrap(),
+                &session.decisions, &session.assignments, result)?;
+        }
+        finalize_repository_preview(&mut preview, &self.workspace_identity())?;
+        for session in sessions {
+            session.status.stage = "preview".to_string();
+            session.status.message = "已生成完整联合预览，确认后才会连接远端".to_string();
+            session.status.pending_decision_count = 0;
+            session.status.updated_at = now();
+            self.save_curriculum_review(session)?;
+        }
         Ok(preview)
     }
+    pub fn save_curriculum_review(&self, session: &UpdateSession) -> Result<PathBuf> {
+        self.require_current_workspace()?;
+        let diff = session.diff.as_ref().context("尚未生成教务差异")?;
+        validate_review_session(diff, &session.decisions, &session.assignments)?;
+        let baseline = crate::curriculum::baseline_snapshot(&self.manifest)?;
+        if canonical_sha256(&serde_json::to_value(&baseline)?)
+            != canonical_sha256(&serde_json::to_value(&diff.current)?)
+        {
+            bail!("审阅的课程基线已变化，不能把旧裁决保存到新基线")
+        }
+        let review_dir = self.operations_path.join(CURRICULUM_REVIEW_DIRECTORY);
+        fs::create_dir_all(&review_dir)?;
+        let review_id = &diff.diff_identity_sha256[..20];
+        let path = review_dir.join(format!("curriculum-review-{review_id}.json"));
+        if path.exists() {
+            let existing = read_json(&path)?;
+            validate_review_payload(&existing)?;
+            if existing.get("completed").and_then(Value::as_bool) == Some(true) {
+                bail!("这项审阅已完成，请重新抓取建立新任务")
+            }
+            if existing.get("workspace_baseline") != Some(&self.workspace_identity()) {
+                bail!("已有审阅基线已变化，不能覆盖")
+            }
+        }
+        let completed = session.status.stage == "completed";
+        let mut payload = json!({
+            "schema_version":1,
+            "review_id":review_id,
+            "kind":session.kind,
+            "title":review_title(diff, session.kind),
+            "updated_at":session.status.updated_at,
+            "completed":completed,
+            "workspace_baseline":self.workspace_identity(),
+            "diff":diff,
+            "decisions":session.decisions,
+            "assignments":session.assignments,
+            "status":session.status,
+            "selections":session.selections,
+        });
+        let content_sha256 = canonical_sha256(&payload);
+        payload["content_sha256"] = json!(content_sha256);
+        atomic_json(&path, &payload)?;
+        Ok(path)
+    }
+
+    pub fn curriculum_reviews(&self) -> Result<Vec<CurriculumReviewSummary>> {
+        let directory = self.operations_path.join(CURRICULUM_REVIEW_DIRECTORY);
+        if !directory.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut result = Vec::new();
+        for path in sorted_json_files(&directory)? {
+            let payload = read_json(&path)?;
+            validate_review_payload(&payload)?;
+            if payload.get("completed").and_then(Value::as_bool) == Some(true) {
+                continue;
+            }
+            let diff: crate::curriculum::CurriculumDiff =
+                serde_json::from_value(payload.get("diff").cloned().context("审阅文件缺少差异")?)?;
+            crate::curriculum::validate_diff(&diff)?;
+            let decisions: crate::curriculum::DecisionSet = serde_json::from_value(
+                payload
+                    .get("decisions")
+                    .cloned()
+                    .context("审阅文件缺少裁决")?,
+            )?;
+            result.push(CurriculumReviewSummary {
+                path: path.to_string_lossy().to_string(),
+                title: string_field(&payload, "title").to_string(),
+                updated_at: string_field(&payload, "updated_at").to_string(),
+                pending_changes: diff.changes.len().saturating_sub(decisions.decisions.len()),
+            });
+        }
+        result.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(result)
+    }
+
+    pub fn resume_curriculum_review(&self, path: &Path) -> Result<UpdateSession> {
+        self.require_current_workspace()?;
+        let controlled = self.controlled_review_path(path)?;
+        let payload = read_json(&controlled)?;
+        validate_review_payload(&payload)?;
+        if payload.get("completed").and_then(Value::as_bool) == Some(true) {
+            bail!("这项教学计划审阅已经完成")
+        }
+        if payload.get("workspace_baseline") != Some(&self.workspace_identity()) {
+            bail!("当前生产数据已变化，旧审阅不能继续")
+        }
+        let diff: crate::curriculum::CurriculumDiff =
+            serde_json::from_value(payload.get("diff").cloned().context("审阅文件缺少差异")?)?;
+        crate::curriculum::validate_diff(&diff)?;
+        let decisions: crate::curriculum::DecisionSet = serde_json::from_value(
+            payload
+                .get("decisions")
+                .cloned()
+                .context("审阅文件缺少裁决")?,
+        )?;
+        let assignments: BTreeMap<String, CourseAssignment> = serde_json::from_value(
+            payload
+                .get("assignments")
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        )?;
+        validate_review_session(&diff, &decisions, &assignments)?;
+        let baseline = crate::curriculum::baseline_snapshot(&self.manifest)?;
+        if canonical_sha256(&serde_json::to_value(&baseline)?)
+            != canonical_sha256(&serde_json::to_value(&diff.current)?)
+        {
+            bail!("当前课程基线已变化，旧裁决不能继续")
+        }
+        let kind: crate::jwts::PlanKind = serde_json::from_value(
+            payload
+                .get("kind")
+                .cloned()
+                .context("审阅文件缺少来源类型")?,
+        )?;
+        let status: CurriculumUpdateStatus =
+            serde_json::from_value(payload.get("status").cloned().context("审阅文件缺少状态")?)?;
+        Ok(UpdateSession {
+            client: None,
+            kind,
+            catalog: crate::jwts::CurriculumCatalog::default(),
+            selections: serde_json::from_value(
+                payload
+                    .get("selections")
+                    .cloned()
+                    .unwrap_or_else(|| json!([])),
+            )?,
+            candidate: Some(diff.candidate.clone()),
+            diff: Some(diff),
+            decisions,
+            assignments,
+            status,
+        })
+    }
+
+    fn controlled_review_path(&self, path: &Path) -> Result<PathBuf> {
+        let directory = self.operations_path.join(CURRICULUM_REVIEW_DIRECTORY);
+        let canonical_directory = directory.canonicalize().context("审阅任务目录不存在")?;
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            directory.join(path)
+        };
+        let canonical = candidate.canonicalize().context("审阅任务文件不存在")?;
+        if canonical.parent() != Some(canonical_directory.as_path())
+            || !canonical
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|name| {
+                    name.starts_with("curriculum-review-") && name.ends_with(".json")
+                })
+        {
+            bail!("只能恢复管理工具审阅目录中的任务")
+        }
+        Ok(canonical)
+    }
+
     pub fn plan_remote_sync(
         &self,
         preview: &RepositorySyncPreview,
     ) -> Result<RepositoryLifecyclePreview> {
+        self.require_current_workspace()?;
+        validate_repository_preview(preview)?;
+        if preview.baseline != self.workspace_identity() {
+            bail!("本地三份管理数据已变化，请重新生成预览")
+        }
         validate_state(&preview.topology, &preview.routes, false)?;
         let organization = string_field(&preview.topology, "organization").to_string();
-        let registry_remote = std::env::var("FIREWORKS_REGISTRY_REMOTE").unwrap_or_else(|_| {
+        let registry_remote = self.registry_remote.clone().unwrap_or_else(|| {
             remote_url(
                 &self.remote_template,
                 &organization,
@@ -546,10 +1092,10 @@ impl Manager {
             let manifest_repo = manifest_repositories.get(&repo_id).copied();
             let description = manifest_repo
                 .map(|value| string_field(value, "description"))
-                .unwrap_or("")
-                .chars()
-                .take(350)
-                .collect::<String>();
+                .unwrap_or("").to_string();
+            if description.chars().count() > 350 {
+                bail!("仓库描述超过完整条目投影上限：{repo_id}")
+            }
             let title = manifest_repo
                 .map(|value| string_field(value, "display_name"))
                 .filter(|value| !value.is_empty())
@@ -560,7 +1106,7 @@ impl Manager {
                 .and_then(Value::as_str)
                 == Some("template");
             let remote = remote_url(&self.remote_template, &organization, &repo_id);
-            let baseline = remote_repository_metadata(&organization, &repo_id, &remote)?;
+            let mut baseline = remote_repository_metadata(&organization, &repo_id, &remote)?;
             let exists = baseline
                 .get("exists")
                 .and_then(Value::as_bool)
@@ -578,6 +1124,24 @@ impl Manager {
             } else {
                 RepositoryLifecycleKind::Update
             };
+            let is_course = manifest_repo.is_some_and(|value| string_field(value, "repo_type") == "course");
+            let template_repository = (is_course && !exists && github_repository_path(&remote).is_some())
+                .then(|| format!("{organization}/fireworks-course-template-v2"));
+            let readme = if is_course {
+                let mapping = repository_course_mapping(&preview.manifest, &repo_id)?;
+                let generated = crate::repository_metadata::readme(&mapping)?;
+                if github_repository_path(&remote).is_some() {
+                    let source_repository = template_repository.clone().unwrap_or_else(|| format!("{organization}/{repo_id}"));
+                    let original = github_readme(&source_repository)?;
+                    let merged = merge_managed_course_readme(original.as_ref().map(|(_, text)| text.as_str()), &generated)?;
+                    baseline["readme_sha"] = original.map(|(sha, _)| json!(sha)).unwrap_or(Value::Null);
+                    Some(merged)
+                } else {
+                    Some(generated)
+                }
+            } else {
+                None
+            };
             actions.push(RepositoryLifecycleAction {
                 repo_id: repo_id.clone(),
                 title,
@@ -587,6 +1151,8 @@ impl Manager {
                 archived: archive.contains(&repo_id),
                 template,
                 default_branch: "main".to_string(),
+                readme,
+                template_repository,
                 baseline,
             });
         }
@@ -625,27 +1191,62 @@ impl Manager {
         Ok(result)
     }
 
+    pub fn refresh_curriculum_preview(&self, preview: &mut RepositorySyncPreview) -> Result<()> {
+        self.require_current_workspace()?;
+        validate_repository_preview(preview)?;
+        if preview.baseline != self.workspace_identity() {
+            bail!("不能重整其他数据基线的预览")
+        }
+        refresh_curriculum_metadata(&mut preview.manifest)?;
+        finalize_repository_preview(preview, &self.workspace_identity())
+    }
+
     pub fn execute_remote_sync(
         &mut self,
         state_preview: &RepositorySyncPreview,
         remote_preview: &RepositoryLifecyclePreview,
     ) -> Result<UpdateExecutionJournal> {
+        self.execute_remote_sync_with(state_preview, remote_preview, &mut GhLifecycleApi)
+    }
+
+    fn execute_remote_sync_with(
+        &mut self,
+        state_preview: &RepositorySyncPreview,
+        remote_preview: &RepositoryLifecyclePreview,
+        github: &mut impl GithubLifecycleApi,
+    ) -> Result<UpdateExecutionJournal> {
+        self.require_current_workspace()?;
+        validate_repository_preview(state_preview)?;
+        let current_identity = self.workspace_identity();
+        let target_identity = json!({
+            "manifest_sha256":canonical_sha256(&state_preview.manifest),
+            "topology_sha256":canonical_sha256(&state_preview.topology),
+            "routes_sha256":canonical_sha256(&state_preview.routes)
+        });
+        let already_applied = current_identity == target_identity;
+        if state_preview.baseline != current_identity && !already_applied {
+            bail!("本地三份管理数据已变化，请重新生成预览")
+        }
         if lifecycle_identity(remote_preview)? != remote_preview.identity_sha256 {
             bail!("仓库同步预览已被修改")
         }
-        validate_state(&state_preview.topology, &state_preview.routes, false)?;
-        let operation_id = format!(
-            "curriculum-update-{}",
-            &remote_preview.identity_sha256[..20]
+        if !registry_files_match(state_preview, &remote_preview.registry.files)? {
+            bail!("远端预览不属于这份本地状态预览")
+        }
+        let operation_identity = canonical_sha256(
+            &json!({"state":state_preview.identity_sha256,"remote":remote_preview.identity_sha256}),
         );
+        let operation_id = format!("curriculum-update-{}", &operation_identity[..20]);
         let preview_path = self
             .operations_path
             .join(format!("{operation_id}.update-preview.json"));
-        if !preview_path.exists() {
-            atomic_json(
-                &preview_path,
-                &json!({"state":state_preview,"remote":remote_preview}),
-            )?;
+        if preview_path.exists() {
+            if crate::json_store::canonical_sha256(&preview_path)? != preview_bundle_sha256(state_preview, remote_preview, &operation_identity)? {
+                bail!("已保存的更新预览与当前内容不一致")
+            }
+        } else {
+            let bundle = json!({"state":state_preview,"remote":remote_preview,"identity_sha256":operation_identity});
+            atomic_json(&preview_path, &bundle)?;
         }
         let journal_path = self
             .operations_path
@@ -654,9 +1255,9 @@ impl Manager {
             serde_json::from_value::<UpdateExecutionJournal>(read_json(&journal_path)?)?
         } else {
             UpdateExecutionJournal {
-                schema_version: 1,
+                schema_version: 2,
                 operation_id: operation_id.clone(),
-                preview_identity_sha256: remote_preview.identity_sha256.clone(),
+                preview_identity_sha256: operation_identity.clone(),
                 preview_path: preview_path.to_string_lossy().to_string(),
                 status: "applying".to_string(),
                 stage: "registry".to_string(),
@@ -668,9 +1269,18 @@ impl Manager {
                 updated_at: now(),
             }
         };
-        if journal.preview_identity_sha256 != remote_preview.identity_sha256 {
+        if journal.preview_identity_sha256 != operation_identity {
             bail!("任务记录属于另一批更新")
         }
+        if journal.status == "completed" {
+            self.verify_remote_sync(remote_preview, &journal)?;
+            return Ok(journal);
+        }
+        recover_legacy_creation(github, &remote_preview.organization, &remote_preview.actions, &mut journal, &journal_path)?;
+        journal.status = "applying".to_string();
+        journal.error = None;
+        journal.updated_at = now();
+        save_update_journal(&journal_path, &journal)?;
         let result = (|| -> Result<()> {
             if !journal
                 .completed_stages
@@ -679,8 +1289,10 @@ impl Manager {
             {
                 journal.stage = "registry".to_string();
                 save_update_journal(&journal_path, &journal)?;
-                let commit = sync_registry(&remote_preview.registry, &journal.operation_id)?;
-                journal.registry_commit = Some(commit);
+                journal.registry_commit = Some(sync_registry(
+                    &remote_preview.registry,
+                    &journal.operation_id,
+                )?);
                 journal.completed_stages.push("registry".to_string());
                 journal.updated_at = now();
                 save_update_journal(&journal_path, &journal)?;
@@ -694,8 +1306,8 @@ impl Manager {
                 {
                     continue;
                 }
-                apply_repository_lifecycle(&remote_preview.organization, action)?;
-                verify_repository_lifecycle(&remote_preview.organization, action)?;
+                apply_repository_lifecycle(github, &remote_preview.organization, action, &mut journal, &journal_path)?;
+                verify_repository_lifecycle_with(github, &remote_preview.organization, action)?;
                 journal
                     .repository_results
                     .insert(action.repo_id.clone(), "completed".to_string());
@@ -709,19 +1321,28 @@ impl Manager {
             {
                 journal.completed_stages.push("repositories".to_string());
             }
+            journal.stage = "remote-verify".to_string();
+            verify_registry(&remote_preview.registry, journal.registry_commit.as_deref())?;
+            for action in &remote_preview.actions {
+                verify_repository_lifecycle_with(github, &remote_preview.organization, action)?;
+            }
+            if !journal
+                .completed_stages
+                .iter()
+                .any(|value| value == "remote-verified")
+            {
+                journal.completed_stages.push("remote-verified".to_string());
+            }
             journal.stage = "local-state".to_string();
-            self.apply_repository_sync_preview(state_preview)?;
+            if !already_applied {
+                self.apply_repository_sync_preview(state_preview)?;
+            }
             if !journal
                 .completed_stages
                 .iter()
                 .any(|value| value == "local-state")
             {
                 journal.completed_stages.push("local-state".to_string());
-            }
-            journal.stage = "verify".to_string();
-            verify_registry(&remote_preview.registry, journal.registry_commit.as_deref())?;
-            for action in &remote_preview.actions {
-                verify_repository_lifecycle(&remote_preview.organization, action)?;
             }
             journal.status = "completed".to_string();
             journal.stage = "completed".to_string();
@@ -732,7 +1353,7 @@ impl Manager {
         })();
         if let Err(error) = result {
             journal.status = "failed".to_string();
-            journal.error = Some(human_error(&error));
+            journal.error = Some(format!("{error:#}"));
             journal.updated_at = now();
             let _ = save_update_journal(&journal_path, &journal);
             return Err(error);
@@ -744,36 +1365,52 @@ impl Manager {
         &mut self,
         journal: &UpdateExecutionJournal,
     ) -> Result<UpdateExecutionJournal> {
-        if journal.status == "completed" {
-            bail!("这项更新已经完成")
-        }
-        let bundle = read_json(Path::new(&journal.preview_path))?;
+        let mut bundle = read_json(Path::new(&journal.preview_path))?;
         let state: RepositorySyncPreview = serde_json::from_value(
             bundle
-                .get("state")
-                .cloned()
+                .as_object_mut().context("更新预览不是对象")?
+                .remove("state")
                 .context("更新任务缺少本地预览")?,
         )?;
         let remote: RepositoryLifecyclePreview = serde_json::from_value(
             bundle
-                .get("remote")
-                .cloned()
+                .as_object_mut().context("更新预览不是对象")?
+                .remove("remote")
                 .context("更新任务缺少远端预览")?,
         )?;
-        if remote.identity_sha256 != journal.preview_identity_sha256 {
+        let expected = canonical_sha256(
+            &json!({"state":state.identity_sha256,"remote":remote.identity_sha256}),
+        );
+        if bundle.get("identity_sha256").and_then(Value::as_str) != Some(expected.as_str())
+            || journal.preview_identity_sha256 != expected
+        {
             bail!("更新预览与任务记录不一致")
+        }
+        if journal.status == "completed" {
+            self.verify_remote_sync(&remote, journal)?;
+            return Ok(journal.clone());
         }
         self.execute_remote_sync(&state, &remote)
     }
 
     pub fn verify_update_journal(&self, journal: &UpdateExecutionJournal) -> Result<()> {
-        let bundle = read_json(Path::new(&journal.preview_path))?;
+        let mut bundle = read_json(Path::new(&journal.preview_path))?;
+        let state: RepositorySyncPreview = serde_json::from_value(
+            bundle
+                .as_object_mut().context("更新预览不是对象")?
+                .remove("state")
+                .context("更新任务缺少本地预览")?,
+        )?;
+        validate_repository_preview(&state)?;
         let remote: RepositoryLifecyclePreview = serde_json::from_value(
             bundle
-                .get("remote")
-                .cloned()
+                .as_object_mut().context("更新预览不是对象")?
+                .remove("remote")
                 .context("更新任务缺少远端预览")?,
         )?;
+        if !registry_files_match(&state, &remote.registry.files)? {
+            bail!("远端预览与本地状态不一致")
+        }
         self.verify_remote_sync(&remote, journal)
     }
 
@@ -784,10 +1421,12 @@ impl Manager {
             .filter_map(|value| value.get("repo_id").and_then(Value::as_str))
             .map(ToOwned::to_owned)
             .collect::<Vec<_>>();
-        Ok(RepositorySyncPreview {
+        let mut preview = RepositorySyncPreview {
             manifest: self.manifest.clone(),
             topology: self.topology.clone(),
             routes: self.routes.clone(),
+            baseline: self.workspace_identity(),
+            identity_sha256: String::new(),
             create_repositories: Vec::new(),
             archive_repositories: Vec::new(),
             metadata_repositories,
@@ -797,7 +1436,9 @@ impl Manager {
             new_course_code_count: 0,
             removed_course_code_count: 0,
             summary_lines: vec!["检查课程注册表和全部仓库设置".to_string()],
-        })
+        };
+        finalize_repository_preview(&mut preview, &self.workspace_identity())?;
+        Ok(preview)
     }
 
     pub fn update_journals(&self) -> Result<Vec<UpdateExecutionJournal>> {
@@ -825,8 +1466,8 @@ impl Manager {
         remote_preview: &RepositoryLifecyclePreview,
         journal: &UpdateExecutionJournal,
     ) -> Result<()> {
-        if journal.preview_identity_sha256 != remote_preview.identity_sha256 {
-            bail!("任务记录属于另一批更新")
+        if lifecycle_identity(remote_preview)? != remote_preview.identity_sha256 {
+            bail!("仓库同步预览已被修改")
         }
         if journal.status != "completed" {
             bail!("更新尚未完成")
@@ -1322,6 +1963,21 @@ impl Manager {
             "topology_sha256": canonical_sha256(&self.topology),
             "routes_sha256": canonical_sha256(&self.routes)
         })
+    }
+
+    fn disk_workspace_identity(&self) -> Result<Value> {
+        Ok(json!({
+            "manifest_sha256":canonical_sha256(&read_json(&self.manifest_path)?),
+            "topology_sha256":canonical_sha256(&read_json(&self.topology_path)?),
+            "routes_sha256":canonical_sha256(&read_json(&self.routes_path)?)
+        }))
+    }
+
+    fn require_current_workspace(&self) -> Result<()> {
+        if self.disk_workspace_identity()? != self.workspace_identity() {
+            bail!("磁盘上的管理数据已变化，请刷新后重新审阅")
+        }
+        Ok(())
     }
 
     fn repository_rows(&self) -> Result<Vec<RepositorySummary>> {
@@ -2449,9 +3105,11 @@ impl Manager {
     fn rebuild_from_snapshot(
         &self,
         snapshot: &crate::jwts::CandidateSnapshot,
+        assignments: &BTreeMap<String, CourseAssignment>,
     ) -> Result<RepositorySyncPreview> {
+        crate::curriculum::validate_snapshot(snapshot)?;
         let old_descriptors = array_at(&self.manifest, "course_descriptors")?;
-        let old_descriptor_by_code: HashMap<String, Value> = old_descriptors
+        let old_descriptor_by_code = old_descriptors
             .iter()
             .filter_map(|value| {
                 value
@@ -2459,103 +3117,103 @@ impl Manager {
                     .and_then(Value::as_str)
                     .map(|code| (normalize(code), value.clone()))
             })
-            .collect();
-        let old_resource_groups = array_at(&self.manifest, "resource_groups")?;
-        let old_group_by_name: HashMap<String, Value> = old_resource_groups
-            .iter()
-            .filter_map(|value| {
-                string_array(value, "course_names")
-                    .first()
-                    .map(|name| (normalize(name).to_lowercase(), value.clone()))
-            })
-            .collect();
-        let old_repo_by_id: HashMap<String, Value> = array_at(&self.manifest, "repositories")?
-            .iter()
-            .filter_map(|value| {
-                value
-                    .get("repo_id")
-                    .and_then(Value::as_str)
-                    .map(|id| (id.to_string(), value.clone()))
-            })
-            .collect();
-        let old_route_by_code: HashMap<String, Value> =
-            array_at(&self.routes, "course_code_routes")
-                .unwrap_or(&[])
-                .iter()
-                .filter_map(|value| {
-                    value
-                        .get("course_code")
-                        .and_then(Value::as_str)
-                        .map(|code| (normalize(code), value.clone()))
-                })
-                .collect();
-
+            .collect::<BTreeMap<_, _>>();
+        let old_records = array_at(&self.manifest, "curriculum_records")?.to_vec();
+        let mut old_records_by_plan = BTreeMap::<String, Vec<Value>>::new();
+        for record in old_records {
+            old_records_by_plan
+                .entry(string_field(&record, "source_plan").to_string())
+                .or_default()
+                .push(record);
+        }
         let mut manifest = self.manifest.clone();
         let mut topology = self.topology.clone();
         let mut routes = self.routes.clone();
-        let mut plans = Vec::new();
-        let mut records = Vec::new();
-        let mut records_by_plan = BTreeMap::<String, Vec<String>>::new();
-        let mut pending = Vec::new();
-        let mut descriptor_records = BTreeMap::<String, Vec<String>>::new();
-        let mut descriptor_names = BTreeMap::<String, String>::new();
-        let mut descriptor_bindings = BTreeMap::<String, Value>::new();
-        let mut new_resource_groups = Vec::new();
-        let mut new_repo_ids = BTreeSet::new();
-        let mut create_repositories = BTreeSet::new();
-
+        let mut bindings = BTreeMap::<String, Value>::new();
+        let mut names = BTreeMap::<String, String>::new();
+        let mut current_codes = BTreeSet::new();
         for plan in &snapshot.plans {
-            let info = normalize_plan_info(&plan.plan_id, &plan.info);
-            plans.push(info.clone());
-            let source_file = string_field(&info, "source_plan_file").to_string();
-            let mut plan_record_ids = Vec::new();
-            for (ordinal, course) in plan.courses.iter().enumerate() {
-                let record_id = record_id(&plan.plan_id, ordinal);
+            for course in &plan.courses {
                 let code = normalized_value(course.get("course_code"));
-                let name = normalized_value(course.get("course_name"));
-                let binding = if code.is_empty() {
-                    None
-                } else if let Some(old) = old_descriptor_by_code.get(&code) {
-                    Some(json!({
+                if code.is_empty() {
+                    continue;
+                }
+                current_codes.insert(code.clone());
+                let name = names.entry(code.clone()).or_default();
+                if name.is_empty() {
+                    *name = normalized_value(course.get("course_name"));
+                }
+                if bindings.contains_key(&code) {
+                    continue;
+                }
+                let binding = if let Some(old) = old_descriptor_by_code.get(&code) {
+                    json!({
                         "resource_group_id":string_field(old,"resource_group_id"),
                         "physical_repository_id":string_field(old,"physical_repository_id"),
                         "repo_id":string_field(old,"repo_id")
-                    }))
+                    })
                 } else {
-                    let binding = self.binding_for_new_course(
-                        &code,
-                        &name,
-                        course,
-                        &old_group_by_name,
-                        &old_repo_by_id,
-                    )?;
-                    let group_id = string_field(&binding, "resource_group_id").to_string();
-                    if !old_resource_groups
-                        .iter()
-                        .any(|value| string_field(value, "resource_group_id") == group_id)
-                        && !new_resource_groups.iter().any(|value: &Value| {
-                            string_field(value, "resource_group_id") == group_id
-                        })
-                    {
-                        new_resource_groups.push(json!({
-                            "resource_group_id":group_id,
-                            "preferred_repo_id":code,
-                            "display_name":name,
-                            "course_names":[name],
-                            "course_codes":[code],
-                            "grouping_rule":"exact-normalized-course-name",
-                            "evidence":"教务更新新增课程，按规范课程名建立稳定资料组",
-                            "legacy_units":[],
-                            "status":"mapped"
-                        }));
-                    }
-                    let repo_id = string_field(&binding, "repo_id").to_string();
-                    if !old_repo_by_id.contains_key(&repo_id) {
-                        new_repo_ids.insert(repo_id.clone());
-                        create_repositories.insert(repo_id);
-                    }
-                    Some(binding)
+                    let assignment = assignments
+                        .get(&code)
+                        .context("新增课程代码缺少明确仓库归属")?;
+                    self.binding_from_assignment(&code, &names[&code], assignment)?
                 };
+                bindings.insert(code, binding);
+            }
+        }
+        let unknown_assignments = assignments
+            .keys()
+            .filter(|code| {
+                !current_codes.contains(*code) || old_descriptor_by_code.contains_key(*code)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_assignments.is_empty() {
+            bail!(
+                "课程归属只能指定当前已接受的新增代码：{}",
+                unknown_assignments.join("、")
+            )
+        }
+
+        let mut plans = Vec::new();
+        let mut records = Vec::new();
+        let mut records_by_plan = BTreeMap::<String, Vec<String>>::new();
+        let mut descriptor_records = BTreeMap::<String, Vec<String>>::new();
+        let mut pending_uncoded = Vec::new();
+        for plan in &snapshot.plans {
+            let info = normalize_plan_info(&plan.plan_id, &plan.info);
+            plans.push(info.clone());
+            let old_plan_records = old_records_by_plan
+                .get(&plan.plan_id)
+                .cloned()
+                .unwrap_or_default();
+            let aligned_ids =
+                crate::curriculum::aligned_record_pairs(&old_plan_records, &plan.courses)
+                    .into_iter()
+                    .filter_map(|(before, after)| {
+                        Some((
+                            after?,
+                            string_field(&old_plan_records[before?], "record_id").to_string(),
+                        ))
+                    })
+                    .filter(|(_, id)| !id.is_empty())
+                    .collect::<BTreeMap<_, _>>();
+            let mut used_old_ids = BTreeSet::new();
+            let mut semantic_counts = BTreeMap::<String, usize>::new();
+            let mut plan_record_ids = Vec::new();
+            for (ordinal, course) in plan.courses.iter().enumerate() {
+                let semantic = course_semantic_identity(course);
+                let occurrence = semantic_counts.entry(semantic.clone()).or_default();
+                let record_id = aligned_ids
+                    .get(&ordinal)
+                    .cloned()
+                    .unwrap_or_else(|| stable_record_id(&plan.plan_id, &semantic, *occurrence));
+                *occurrence += 1;
+                if !used_old_ids.insert(record_id.clone()) {
+                    bail!("课程记录无法一一匹配，生成了重复身份：{}", record_id)
+                }
+                let code = normalized_value(course.get("course_code"));
+                let name = normalized_value(course.get("course_name"));
                 let mut record = course.clone();
                 if !record.is_object() {
                     record = json!({"course_name":name});
@@ -2563,7 +3221,10 @@ impl Manager {
                 let object = record.as_object_mut().context("课程记录不是对象")?;
                 object.insert("record_id".to_string(), json!(record_id));
                 object.insert("source_plan".to_string(), json!(plan.plan_id));
-                object.insert("source_plan_file".to_string(), json!(source_file));
+                object.insert(
+                    "source_plan_file".to_string(),
+                    info.get("source_plan_file").cloned().unwrap_or(Value::Null),
+                );
                 object.insert("source_ordinal".to_string(), json!(ordinal));
                 object.insert(
                     "metadata_repo_id".to_string(),
@@ -2575,20 +3236,26 @@ impl Manager {
                 );
                 for key in [
                     "campus",
+                    "source_kind",
                     "plan_version",
+                    "entry_cohort",
                     "department_code",
                     "school_name",
                     "major_code",
                     "major_name",
+                    "major_full_name",
+                    "program_type",
                 ] {
-                    if object.get(key).is_none_or(Value::is_null) {
-                        object.insert(
-                            key.to_string(),
-                            info.get(key).cloned().unwrap_or(Value::Null),
-                        );
+                    if let Some(value) = info.get(key) {
+                        object.insert(key.to_string(), value.clone());
                     }
                 }
-                if let Some(binding) = binding {
+                if code.is_empty() {
+                    object.insert("status".to_string(), json!("pending-course-code"));
+                    object.insert("identity_status".to_string(), json!("uncoded"));
+                    pending_uncoded.push(record_id.clone());
+                } else {
+                    let binding = bindings.get(&code).context("课程缺少仓库归属")?;
                     object.insert("repo_id".to_string(), binding["repo_id"].clone());
                     object.insert("repo_type".to_string(), json!("course"));
                     object.insert(
@@ -2607,26 +3274,35 @@ impl Manager {
                     object.insert("status".to_string(), json!("mapped"));
                     object.insert("identity_status".to_string(), json!("coded"));
                     descriptor_records
-                        .entry(code.clone())
+                        .entry(code)
                         .or_default()
                         .push(record_id.clone());
-                    descriptor_names.entry(code.clone()).or_insert(name.clone());
-                    descriptor_bindings.entry(code).or_insert(binding);
-                } else {
-                    object.insert("status".to_string(), json!("pending-course-code"));
-                    object.insert("identity_status".to_string(), json!("uncoded"));
-                    pending.push(record_id.clone());
                 }
-                plan_record_ids.push(record_id.clone());
+                plan_record_ids.push(record_id);
                 records.push(record);
             }
             records_by_plan.insert(plan.plan_id.clone(), plan_record_ids);
         }
+        plans.sort_by_key(|value| string_field(value, "plan_id").to_string());
+        records.sort_by_key(|value| {
+            (
+                string_field(value, "source_plan").to_string(),
+                value
+                    .get("source_ordinal")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(u64::MAX),
+            )
+        });
 
         let mut descriptors = Vec::new();
-        for (code, record_ids) in &descriptor_records {
-            let binding = &descriptor_bindings[code];
+        let all_codes = old_descriptor_by_code
+            .keys()
+            .chain(current_codes.iter())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for code in &all_codes {
             let old = old_descriptor_by_code.get(code);
+            let binding = bindings.get(code).or_else(|| old);
             let mut descriptor = old.cloned().unwrap_or_else(|| json!({}));
             let object = descriptor.as_object_mut().context("课程描述不是对象")?;
             object.insert(
@@ -2634,18 +3310,36 @@ impl Manager {
                 json!(format!("course-code:{code}")),
             );
             object.insert("course_code".to_string(), json!(code));
-            object.insert("course_name".to_string(), json!(descriptor_names[code]));
-            object.insert(
-                "resource_group_id".to_string(),
-                binding["resource_group_id"].clone(),
-            );
-            object.insert(
-                "physical_repository_id".to_string(),
-                binding["physical_repository_id"].clone(),
-            );
-            object.insert("repo_id".to_string(), binding["repo_id"].clone());
-            object.insert("attachment_repo_id".to_string(), binding["repo_id"].clone());
-            object.insert("record_ids".to_string(), json!(record_ids));
+            if let Some(name) = names.get(code).filter(|name| !name.is_empty()) {
+                object.insert("course_name".to_string(), json!(name));
+            }
+            if let Some(binding) = binding {
+                for key in ["resource_group_id", "physical_repository_id", "repo_id"] {
+                    object.insert(
+                        key.to_string(),
+                        binding.get(key).cloned().unwrap_or(Value::Null),
+                    );
+                }
+                object.insert(
+                    "attachment_repo_id".to_string(),
+                    binding.get("repo_id").cloned().unwrap_or(Value::Null),
+                );
+            }
+            if current_codes.contains(code) {
+                object.insert(
+                    "record_ids".to_string(),
+                    json!(descriptor_records.get(code).cloned().unwrap_or_default()),
+                );
+                object.insert("status".to_string(), json!("mapped-current"));
+            } else {
+                let historical_ids = object
+                    .get("record_ids")
+                    .cloned()
+                    .unwrap_or_else(|| json!([]));
+                object.insert("historical_record_ids".to_string(), historical_ids);
+                object.insert("record_ids".to_string(), json!([]));
+                object.insert("status".to_string(), json!("historical-not-current"));
+            }
             object.insert(
                 "metadata_repo_id".to_string(),
                 json!("fireworks-course-registry-v2"),
@@ -2657,232 +3351,758 @@ impl Manager {
                     encode_path_component(code)
                 )),
             );
-            object.insert("status".to_string(), json!("mapped"));
             descriptors.push(descriptor);
         }
-        descriptors.sort_by_key(|value| string_field(value, "course_code").to_string());
-        plans.sort_by_key(|value| string_field(value, "plan_id").to_string());
-        records.sort_by_key(|value| {
-            (
-                string_field(value, "source_plan").to_string(),
-                value
-                    .get("source_ordinal")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0),
-            )
-        });
 
         let object = manifest.as_object_mut().context("manifest 不是对象")?;
         object.insert("curriculum_plans".to_string(), json!(plans));
         object.insert("curriculum_records".to_string(), json!(records));
         object.insert("course_descriptors".to_string(), json!(descriptors));
-        object.insert(
-            "curriculum_metadata_indexes".to_string(),
-            json!({"by_plan":records_by_plan,"pending_course_code":pending}),
-        );
-        if !new_resource_groups.is_empty() {
-            let groups = object
-                .get_mut("resource_groups")
-                .and_then(Value::as_array_mut)
-                .context("manifest 缺少资源组")?;
-            groups.extend(new_resource_groups);
-            groups.sort_by_key(|value| string_field(value, "resource_group_id").to_string());
-        }
+        let indexes = object
+            .entry("curriculum_metadata_indexes")
+            .or_insert_with(|| json!({}));
+        indexes["by_plan"] = json!(records_by_plan);
+        indexes["pending_course_code"] = json!(pending_uncoded);
+        self.update_course_membership(
+            &mut manifest,
+            &mut topology,
+            &bindings,
+            &names,
+            assignments,
+        )?;
 
-        self.apply_new_repositories_to_state(&manifest, &mut topology, &mut routes, &new_repo_ids)?;
-        let old_codes: BTreeSet<_> = old_descriptor_by_code.keys().cloned().collect();
-        let new_codes: BTreeSet<_> = descriptor_records.keys().cloned().collect();
-        let removed_codes = old_codes
-            .difference(&new_codes)
+        let mut route_index = array_at(&routes, "course_code_routes")
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(|route| {
+                let code = normalized_value(route.get("course_code"));
+                (!code.is_empty()).then_some((code, route.clone()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        for code in &all_codes {
+            let binding = bindings
+                .get(code)
+                .or_else(|| old_descriptor_by_code.get(code))
+                .context("课程路由缺少历史绑定")?;
+            let mut route = route_index.remove(code).unwrap_or_else(|| {
+                json!({
+                    "component_id":format!("course-code-{}", &canonical_sha256(&json!(code))[..20]),
+                    "course_code":code,
+                    "has_material":false
+                })
+            });
+            route["repo_id"] = binding.get("repo_id").cloned().unwrap_or(Value::Null);
+            route["physical_repository_id"] = binding
+                .get("physical_repository_id")
+                .cloned()
+                .unwrap_or(Value::Null);
+            route["status"] = json!(if current_codes.contains(code) {
+                "current"
+            } else {
+                "historical-not-current"
+            });
+            route_index.insert(code.clone(), route);
+        }
+        routes["course_code_routes"] = json!(route_index.into_values().collect::<Vec<_>>());
+        refresh_curriculum_metadata(&mut manifest)?;
+        validate_state(&topology, &routes, false)?;
+        let old_codes = old_descriptor_by_code
+            .keys()
             .cloned()
-            .collect::<Vec<_>>();
-        let added_codes = new_codes
+            .collect::<BTreeSet<_>>();
+        let added = current_codes
             .difference(&old_codes)
             .cloned()
             .collect::<Vec<_>>();
-        routes["course_code_routes"] = json!(new_codes
-            .iter()
-            .map(|code| {
-                let binding = &descriptor_bindings[code];
-                let old = old_route_by_code.get(code);
-                json!({
-                    "component_id":old.and_then(|value| value.get("component_id")).cloned().unwrap_or_else(|| json!(format!("course-code-{}", &canonical_sha256(&json!(code))[..20]))),
-                    "course_code":code,
-                    "has_material":old.and_then(|value| value.get("has_material")).cloned().unwrap_or(json!(false)),
-                    "physical_repository_id":binding["physical_repository_id"],
-                    "repo_id":binding["repo_id"]
-                })
-            })
-            .collect::<Vec<_>>());
-        validate_state(&topology, &routes, false)?;
-
-        let active_repositories: BTreeSet<_> = new_codes
-            .iter()
-            .filter_map(|code| descriptor_bindings.get(code))
-            .filter_map(|binding| binding.get("repo_id").and_then(Value::as_str))
-            .map(ToOwned::to_owned)
-            .collect();
-        let file_counts: HashMap<String, usize> =
-            array_at(&routes, "files")?
-                .iter()
-                .fold(HashMap::new(), |mut result, value| {
-                    *result
-                        .entry(string_field(value, "repo_id").to_string())
-                        .or_default() += 1;
-                    result
-                });
-        let archive_repositories = repositories(&topology)?
-            .keys()
-            .filter(|repo_id| {
-                !active_repositories.contains(*repo_id)
-                    && file_counts.get(*repo_id).copied().unwrap_or(0) == 0
-                    && old_repo_by_id
-                        .get(*repo_id)
-                        .is_some_and(|value| string_field(value, "repo_type") == "course")
-            })
+        let removed = old_codes
+            .difference(&current_codes)
             .cloned()
             .collect::<Vec<_>>();
-        let metadata_repositories = active_repositories.iter().cloned().collect::<Vec<_>>();
-        let summary_lines = vec![
-            format!("培养方案：{} 个", snapshot.plans.len()),
-            format!(
-                "课程记录：{} 条",
-                records_by_plan.values().map(Vec::len).sum::<usize>()
-            ),
-            format!("新增课程代码：{} 个", added_codes.len()),
-            format!("不再出现的课程代码：{} 个", removed_codes.len()),
-            format!("需要创建仓库：{} 个", create_repositories.len()),
-            format!("建议归档空仓库：{} 个", archive_repositories.len()),
-        ];
+        let create_repositories = assignments
+            .iter()
+            .filter_map(|(code, assignment)| {
+                matches!(assignment, CourseAssignment::New { .. } | CourseAssignment::NewGroup { .. })
+                    .then(|| bindings[code]["repo_id"].as_str().unwrap_or("").to_string())
+            })
+            .collect::<BTreeSet<_>>();
+        let metadata_repositories = bindings
+            .values()
+            .filter_map(|binding| binding.get("repo_id").and_then(Value::as_str))
+            .map(ToOwned::to_owned)
+            .collect::<BTreeSet<_>>();
         Ok(RepositorySyncPreview {
             manifest,
             topology,
             routes,
-            create_repositories: create_repositories.into_iter().collect(),
-            archive_repositories,
-            metadata_repositories,
+            baseline: self.workspace_identity(),
+            identity_sha256: String::new(),
+            create_repositories: create_repositories.iter().cloned().collect(),
+            archive_repositories: Vec::new(),
+            metadata_repositories: metadata_repositories.into_iter().collect(),
             plan_count: snapshot.plans.len(),
             record_count: records_by_plan.values().map(Vec::len).sum(),
-            descriptor_count: new_codes.len(),
-            new_course_code_count: added_codes.len(),
-            removed_course_code_count: removed_codes.len(),
-            summary_lines,
+            descriptor_count: all_codes.len(),
+            new_course_code_count: added.len(),
+            removed_course_code_count: removed.len(),
+            summary_lines: vec![
+                format!("培养计划：{} 个", snapshot.plans.len()),
+                format!(
+                    "课程记录：{} 条",
+                    records_by_plan.values().map(Vec::len).sum::<usize>()
+                ),
+                format!("新增课程代码：{} 个", added.len()),
+                format!("转为历史课程代码：{} 个", removed.len()),
+                format!("需要创建仓库：{} 个", create_repositories.len()),
+            ],
         })
     }
 
     pub fn apply_repository_sync_preview(&mut self, preview: &RepositorySyncPreview) -> Result<()> {
-        validate_state(&preview.topology, &preview.routes, false)?;
+        self.require_current_workspace()?;
+        validate_repository_preview(preview)?;
+        let current = self.workspace_identity();
+        let target = json!({
+            "manifest_sha256":canonical_sha256(&preview.manifest),
+            "topology_sha256":canonical_sha256(&preview.topology),
+            "routes_sha256":canonical_sha256(&preview.routes)
+        });
+        if current == target {
+            self.reload()?;
+            self.complete_matching_curriculum_reviews()?;
+            return Ok(());
+        }
+        if preview.baseline != current {
+            bail!("本地三份管理数据已变化，请重新生成预览")
+        }
         atomic_json_many(&[
             (&self.manifest_path, &preview.manifest),
             (&self.topology_path, &preview.topology),
             (&self.routes_path, &preview.routes),
         ])?;
-        self.reload()
+        self.reload()?;
+        self.complete_matching_curriculum_reviews()?;
+        Ok(())
     }
 
-    fn binding_for_new_course(
-        &self,
-        code: &str,
-        name: &str,
-        course: &Value,
-        old_group_by_name: &HashMap<String, Value>,
-        old_repo_by_id: &HashMap<String, Value>,
-    ) -> Result<Value> {
-        if let Some(group) = old_group_by_name.get(&normalize(name).to_lowercase()) {
-            let group_id = string_field(group, "resource_group_id");
-            if let Some(repo) = old_repo_by_id.values().find(|repo| {
-                string_array(repo, "member_resource_group_ids")
-                    .iter()
-                    .any(|value| value == group_id)
+    fn complete_matching_curriculum_reviews(&self) -> Result<()> {
+        let directory = self.operations_path.join(CURRICULUM_REVIEW_DIRECTORY);
+        if !directory.is_dir() {
+            return Ok(());
+        }
+        let history = self
+            .manifest
+            .get("curriculum_history")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for path in sorted_json_files(&directory)? {
+            let mut payload = read_json(&path)?;
+            validate_review_payload(&payload)?;
+            if payload.get("completed").and_then(Value::as_bool) == Some(true) {
+                continue;
+            }
+            let diff = payload.get("diff").context("审阅文件缺少差异")?;
+            let decisions = payload.get("decisions").context("审阅文件缺少裁决")?;
+            let assignments = payload
+                .get("assignments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            if history.iter().any(|entry| {
+                entry.get("diff_identity_sha256") == diff.get("diff_identity_sha256")
+                    && entry.get("decisions") == Some(decisions)
+                    && entry.get("assignments") == Some(&assignments)
             }) {
-                return Ok(json!({
-                    "resource_group_id":group_id,
-                    "physical_repository_id":string_field(repo,"physical_repository_id"),
-                    "repo_id":string_field(repo,"repo_id")
-                }));
+                payload["completed"] = json!(true);
+                payload["completed_at"] = json!(now());
+                payload.as_object_mut().unwrap().remove("content_sha256");
+                payload["content_sha256"] = json!(canonical_sha256(&payload));
+                atomic_json(&path, &payload)?;
             }
         }
-        let college = normalized_value(course.get("offering_college"));
-        let school = normalized_value(course.get("school_name"));
-        let bucket = old_repo_by_id.values().find(|repo| {
-            string_field(repo, "materialization_kind") == "empty-course-code-college-bucket"
-                && [college.as_str(), school.as_str()]
-                    .iter()
-                    .filter(|value| !value.is_empty())
-                    .any(|value| string_field(repo, "display_name").contains(value))
-        });
-        let group_id = format!(
-            "exact-name-{}",
-            &canonical_sha256(&json!({"course_name":normalize(name).to_lowercase()}))[..16]
-        );
-        if let Some(repo) = bucket {
-            return Ok(json!({
-                "resource_group_id":group_id,
-                "physical_repository_id":string_field(repo,"physical_repository_id"),
-                "repo_id":string_field(repo,"repo_id")
-            }));
-        }
-        let repo_id = self.automatic_repo_id(name, &[format!("course:{code}")]);
-        Ok(json!({
-            "resource_group_id":group_id,
-            "physical_repository_id":format!("physical-managed-{}",&canonical_sha256(&json!({"repo_id":repo_id}))[..16]),
-            "repo_id":repo_id
-        }))
+        Ok(())
     }
 
-    fn apply_new_repositories_to_state(
+    fn binding_from_assignment(
         &self,
-        manifest: &Value,
+        code: &str,
+        _name: &str,
+        assignment: &CourseAssignment,
+    ) -> Result<Value> {
+        let group_id = format!("course-code-{}", &canonical_sha256(&json!({"course_code":code}))[..20]);
+        match assignment {
+            CourseAssignment::Existing { repo_id } => {
+                if !self.valid_assignment_repository(repo_id) {
+                    bail!("所选仓库不是可承载资料的活跃课程仓")
+                }
+                let repo = repositories(&self.topology)?.get(repo_id).context("所选仓库不存在")?;
+                Ok(json!({"resource_group_id":group_id,"physical_repository_id":string_field(repo,"physical_repository_id"),"repo_id":repo_id}))
+            }
+            CourseAssignment::New { title } | CourseAssignment::NewGroup { title, .. } => {
+                let title = normalize(title);
+                if title.is_empty() {
+                    bail!("新课程资料仓标题不能为空")
+                }
+                let repo_id = match assignment {
+                    CourseAssignment::NewGroup { repo_id, .. } => {
+                        safe_repo_id(repo_id)?;
+                        repo_id.clone()
+                    }
+                    _ => stable_course_repo_id(code, &title),
+                };
+                if repositories(&self.topology)?.contains_key(&repo_id) || self.manifest_repository(&repo_id).is_some() {
+                    bail!("新资料库身份已存在，请选择现有资料库")
+                }
+                Ok(json!({"resource_group_id":group_id,"physical_repository_id":format!("physical-managed-{}",&canonical_sha256(&json!({"repo_id":repo_id}))[..16]),"repo_id":repo_id,"display_name":title}))
+            }
+        }
+    }
+
+    fn valid_assignment_repository(&self, repo_id: &str) -> bool {
+        let Some(topology) = repositories(&self.topology)
+            .ok()
+            .and_then(|repos| repos.get(repo_id))
+        else {
+            return false;
+        };
+        let kind = string_field(topology, "repo_type");
+        if !matches!(kind, "course" | "shared") {
+            return false;
+        }
+        let manifest = self.manifest_repository(repo_id);
+        let archived = manifest
+            .and_then(|value| value.get("archived"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || topology
+                .get("archived")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        let template = manifest
+            .and_then(|value| value.get("template"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || topology
+                .get("template")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        let lifecycle = manifest
+            .map(|value| string_field(value, "lifecycle_status"))
+            .unwrap_or("");
+        !archived && !template && !matches!(lifecycle, "archived" | "retired" | "disabled")
+    }
+
+    fn update_course_membership(
+        &self,
+        manifest: &mut Value,
         topology: &mut Value,
-        routes: &mut Value,
-        new_repo_ids: &BTreeSet<String>,
+        bindings: &BTreeMap<String, Value>,
+        names: &BTreeMap<String, String>,
+        assignments: &BTreeMap<String, CourseAssignment>,
     ) -> Result<()> {
-        let descriptors = array_at(manifest, "course_descriptors")?;
-        let groups = array_at(manifest, "resource_groups")?;
+        let object = manifest.as_object_mut().context("manifest 格式无效")?;
+        let mut groups = object
+            .remove("resource_groups")
+            .and_then(|value| value.as_array().cloned())
+            .context("manifest 缺少资源组")?;
+        let manifest_repositories = object
+            .get_mut("repositories")
+            .and_then(Value::as_array_mut)
+            .context("manifest 缺少仓库")?;
         let topology_repositories = topology
             .get_mut("repositories")
             .and_then(Value::as_object_mut)
             .context("topology 缺少 repositories")?;
-        for repo_id in new_repo_ids {
-            let codes = descriptors
+        for (code, assignment) in assignments {
+            let binding = &bindings[code];
+            let group_id = string_field(binding, "resource_group_id").to_string();
+            if groups
                 .iter()
-                .filter(|value| string_field(value, "repo_id") == repo_id)
-                .map(|value| string_field(value, "course_code").to_string())
-                .collect::<Vec<_>>();
-            let group_ids = descriptors
-                .iter()
-                .filter(|value| string_field(value, "repo_id") == repo_id)
-                .map(|value| string_field(value, "resource_group_id").to_string())
-                .collect::<BTreeSet<_>>();
-            let title = group_ids
-                .iter()
-                .find_map(|id| {
-                    groups
-                        .iter()
-                        .find(|group| string_field(group, "resource_group_id") == id)
-                })
-                .map(|group| string_field(group, "display_name").to_string())
-                .unwrap_or_else(|| repo_id.clone());
-            let physical_id = descriptors
-                .iter()
-                .find(|value| string_field(value, "repo_id") == repo_id)
-                .map(|value| string_field(value, "physical_repository_id").to_string())
-                .unwrap_or_default();
-            topology_repositories.insert(
-                repo_id.clone(),
-                json!({
-                    "repo_id":repo_id,
-                    "repo_type":"course",
-                    "display_name":title,
-                    "physical_repository_id":physical_id,
-                    "course_codes":codes,
-                    "member_resource_group_ids":group_ids,
-                    "lineage":{"kind":"curriculum-update","source_repo_ids":[]}
-                }),
-            );
+                .all(|group| string_field(group, "resource_group_id") != group_id)
+            {
+                groups.push(json!({"resource_group_id":group_id,"preferred_repo_id":binding["repo_id"],"display_name":names.get(code).cloned().unwrap_or_default(),"course_names":[names.get(code).cloned().unwrap_or_default()],"course_codes":[code],"grouping_rule":"explicit-course-code-assignment","evidence":"管理员在教学计划更新中明确裁决","legacy_units":[],"status":"mapped"}));
+            }
+            let repo_id = string_field(binding, "repo_id").to_string();
+            let title = match assignment {
+                CourseAssignment::New { title } | CourseAssignment::NewGroup { title, .. } => normalize(title),
+                CourseAssignment::Existing { .. } => String::new(),
+            };
+            if let Some(repo) = manifest_repositories
+                .iter_mut()
+                .find(|repo| string_field(repo, "repo_id") == repo_id)
+            {
+                insert_unique_string(repo, "course_codes", code);
+                insert_unique_string(repo, "member_resource_group_ids", &group_id);
+            } else {
+                manifest_repositories.push(json!({"repo_id":repo_id,"repo_type":"course","display_name":title,"physical_repository_id":binding["physical_repository_id"],"course_codes":[code],"member_resource_group_ids":[group_id],"lineage":{"kind":"curriculum-explicit-assignment","source_repo_ids":[]}}));
+            }
+            if let Some(repo) = topology_repositories.get_mut(&repo_id) {
+                insert_unique_string(repo, "course_codes", code);
+                insert_unique_string(repo, "member_resource_group_ids", &group_id);
+            } else {
+                topology_repositories.insert(repo_id.clone(), json!({"repo_id":repo_id,"repo_type":"course","display_name":title,"physical_repository_id":binding["physical_repository_id"],"course_codes":[code],"member_resource_group_ids":[group_id],"lineage":{"kind":"curriculum-explicit-assignment","source_repo_ids":[]}}));
+            }
         }
-        routes["generation"] = topology["generation"].clone();
+        groups.sort_by_key(|value| string_field(value, "resource_group_id").to_string());
+        manifest_repositories.sort_by_key(|value| string_field(value, "repo_id").to_string());
+        object.insert("resource_groups".to_string(), json!(groups));
         Ok(())
+    }
+}
+
+fn reviewed_snapshot(session: &UpdateSession) -> Result<crate::jwts::CandidateSnapshot> {
+    let diff = session.diff.as_ref().context("尚未生成教务差异")?;
+    let snapshot = crate::curriculum::materialize(diff, &session.decisions)?;
+    crate::curriculum::validate_snapshot(&snapshot)?;
+    Ok(snapshot)
+}
+
+fn validate_crawl_selections(
+    session: &UpdateSession,
+    selections: &[crate::jwts::CrawlSelection],
+) -> Result<()> {
+    if selections.is_empty() {
+        bail!("请至少选择一个专业")
+    }
+    let selected_ids = selections
+        .iter()
+        .map(crate::jwts::CrawlSelection::plan_id)
+        .collect::<BTreeSet<_>>();
+    if selected_ids.len() != selections.len() {
+        bail!("同一计划被重复选择")
+    }
+    if selections
+        .iter()
+        .any(|selection| selection.kind != session.kind)
+    {
+        bail!("选择的培养来源与当前任务不一致")
+    }
+    Ok(())
+}
+
+fn validate_snapshot_source(captured: &str, expected: &str) -> Result<()> {
+    fn normalized_service_url(value: &str) -> Result<String> {
+        let mut url = url::Url::parse(value).context("教务来源地址无效")?;
+        if !matches!(url.scheme(), "http" | "https")
+            || url.host_str().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            bail!("教务来源地址必须是不含认证信息、查询参数或片段的 HTTP(S) 地址")
+        }
+        if url.path().is_empty() || url.path() == "/" {
+            url.set_path("/");
+        }
+        Ok(url.to_string())
+    }
+
+    if normalized_service_url(captured)? != normalized_service_url(expected)? {
+        bail!("候选快照来源与当前审阅任务不匹配")
+    }
+    Ok(())
+}
+
+fn plan_matches_selection(info: &Value, selection: &crate::jwts::CrawlSelection) -> bool {
+    let source = string_field(info, "source_kind");
+    let expected_source = match selection.kind {
+        crate::jwts::PlanKind::Curriculum => "curriculum",
+        crate::jwts::PlanKind::Execution => "execution",
+    };
+    let source_matches = if source.is_empty() {
+        selection.kind == crate::jwts::PlanKind::Curriculum
+            && !string_field(info, "plan_id").starts_with("hit:execution:")
+    } else {
+        source == expected_source
+    };
+    if !source_matches
+        || normalize(string_field(info, "department_code")) != normalize(&selection.college_code)
+        || normalize(string_field(info, "major_code")) != normalize(&selection.major_code)
+    {
+        return false;
+    }
+    match selection.kind {
+        crate::jwts::PlanKind::Curriculum => {
+            normalize(string_field(info, "plan_version")) == normalize(&selection.grade)
+        }
+        crate::jwts::PlanKind::Execution => {
+            normalize(string_field(info, "entry_cohort")) == normalize(&selection.grade)
+        }
+    }
+}
+
+fn validate_captured_plan(
+    plan: &crate::jwts::CandidatePlan,
+    selection: &crate::jwts::CrawlSelection,
+) -> Result<()> {
+    if plan.plan_id != selection.plan_id() {
+        bail!("教务返回的计划身份与所选范围不一致")
+    }
+    if !plan_matches_selection(&plan.info, selection) {
+        bail!("教务返回的计划来源或专业范围不一致")
+    }
+    let capture = plan
+        .info
+        .get("source_capture")
+        .and_then(Value::as_object)
+        .context("教务结果缺少完整性证明")?;
+    if capture.get("complete").and_then(Value::as_bool) != Some(true) {
+        bail!("教务查询不完整，未写入审阅任务")
+    }
+    let expected_endpoint = match selection.kind {
+        crate::jwts::PlanKind::Curriculum => "/pyfa/queryPykc",
+        crate::jwts::PlanKind::Execution => "/zxjh/queryZxkc",
+    };
+    if capture.get("endpoint").and_then(Value::as_str) != Some(expected_endpoint) {
+        bail!("教务采集证据的查询入口与计划来源不一致")
+    }
+    let scope = capture
+        .get("scope")
+        .and_then(Value::as_object)
+        .context("教务采集证据缺少查询范围")?;
+    let grade_key = match selection.kind {
+        crate::jwts::PlanKind::Curriculum => "pageBbh",
+        crate::jwts::PlanKind::Execution => "pageNj",
+    };
+    for (key, expected) in [
+        (grade_key, selection.grade.as_str()),
+        ("pageYxdm", selection.college_code.as_str()),
+        ("pageZydm", selection.major_code.as_str()),
+    ] {
+        if scope.get(key).and_then(Value::as_str) != Some(expected) {
+            bail!("教务采集证据的查询范围与所选专业不一致：{key}")
+        }
+    }
+    let checks = capture
+        .get("checks")
+        .and_then(Value::as_object)
+        .context("教务采集证据缺少完整性检查")?;
+    for key in ["authenticated", "expected_headers", "pagination_consistent"] {
+        if checks.get(key).and_then(Value::as_bool) != Some(true) {
+            bail!("教务采集证据不足：{key}")
+        }
+    }
+    let pages = capture
+        .get("pages")
+        .and_then(Value::as_array)
+        .filter(|pages| !pages.is_empty())
+        .context("教务采集证据缺少分页记录")?;
+    let paged_rows = pages.iter().try_fold(0_u64, |total, value| {
+        value
+            .as_u64()
+            .and_then(|rows| total.checked_add(rows))
+            .context("教务采集证据的分页记录无效")
+    })?;
+    let rows = capture
+        .get("rows")
+        .and_then(Value::as_u64)
+        .context("教务采集证据缺少课程行数")?;
+    let unpaged_rows = capture
+        .get("unpaged_rows")
+        .and_then(Value::as_u64)
+        .context("教务采集证据缺少非分页课程行数")?;
+    if paged_rows.checked_add(unpaged_rows) != Some(rows) {
+        bail!("教务采集证据的分页数量不一致")
+    }
+    crate::curriculum::validate_snapshot(&crate::jwts::CandidateSnapshot {
+        generated_at: "capture-validation".to_string(),
+        base_url: String::new(),
+        plans: vec![plan.clone()],
+    })?;
+    Ok(())
+}
+
+fn course_semantic_identity(course: &Value) -> String {
+    canonical_sha256(&crate::curriculum::canonical_course(course))
+}
+
+fn stable_record_id(plan_id: &str, semantic: &str, occurrence: usize) -> String {
+    let hash =
+        canonical_sha256(&json!({"plan_id":plan_id,"semantic":semantic,"occurrence":occurrence}));
+    format!("REC-{}", &hash[..20].to_uppercase())
+}
+
+fn stable_course_repo_id(code: &str, title: &str) -> String {
+    let hash = canonical_sha256(&json!({"course_code":normalize(code),"title":normalize(title)}));
+    format!("COURSE-{}", &hash[..16].to_uppercase())
+}
+
+fn insert_unique_string(value: &mut Value, key: &str, item: &str) {
+    let object = value.as_object_mut().expect("repository object");
+    let array = object
+        .entry(key.to_string())
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .expect("repository member list");
+    if !array.iter().any(|value| value.as_str() == Some(item)) {
+        array.push(json!(item));
+    }
+    array.sort_by_key(|value| value.as_str().unwrap_or("").to_string());
+}
+
+fn append_curriculum_history(
+    manifest: &mut Value,
+    diff: &crate::curriculum::CurriculumDiff,
+    decisions: &crate::curriculum::DecisionSet,
+    assignments: &BTreeMap<String, CourseAssignment>,
+    result: &crate::jwts::CandidateSnapshot,
+) -> Result<()> {
+    crate::curriculum::validate_diff(diff)?;
+    let baseline = serde_json::to_value(&diff.current)?;
+    let candidate = serde_json::to_value(&diff.candidate)?;
+    let result_value = serde_json::to_value(result)?;
+    let decision_value = serde_json::to_value(decisions)?;
+    let assignment_value = serde_json::to_value(assignments)?;
+    let history_id = canonical_sha256(
+        &json!({"diff":diff.diff_identity_sha256,"decisions":decision_value,"assignments":assignment_value,"result":result_value}),
+    );
+    let entry = json!({
+        "history_id":history_id,
+        "created_at":now(),
+        "baseline_sha256":canonical_sha256(&baseline),
+        "candidate_sha256":canonical_sha256(&candidate),
+        "decision_sha256":canonical_sha256(&decision_value),
+        "result_sha256":canonical_sha256(&result_value),
+        "assignment_sha256":canonical_sha256(&assignment_value),
+        "diff_identity_sha256":diff.diff_identity_sha256,
+        "baseline":baseline,
+        "candidate":candidate,
+        "decisions":decision_value,
+        "assignments":assignment_value,
+        "result":result_value
+    });
+    let object = manifest.as_object_mut().context("manifest 不是对象")?;
+    let history = object
+        .entry("curriculum_history")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .context("curriculum_history 不是数组")?;
+    if history
+        .iter()
+        .all(|old| old.get("history_id") != entry.get("history_id"))
+    {
+        history.push(entry);
+    }
+    Ok(())
+}
+
+// 字段按原 serde_json::Value 的字典序输出，保留冻结身份但不复制大数据树。
+struct RepositoryPreviewJson<'a> {
+    preview: &'a RepositorySyncPreview,
+    include_identity: bool,
+}
+
+impl Serialize for RepositoryPreviewJson<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        let p = self.preview;
+        let mut map = serializer.serialize_map(Some(if self.include_identity { 14 } else { 13 }))?;
+        map.serialize_entry("archive_repositories", &p.archive_repositories)?;
+        map.serialize_entry("baseline", &p.baseline)?;
+        map.serialize_entry("create_repositories", &p.create_repositories)?;
+        map.serialize_entry("descriptor_count", &p.descriptor_count)?;
+        if self.include_identity { map.serialize_entry("identity_sha256", &p.identity_sha256)?; }
+        map.serialize_entry("manifest", &p.manifest)?;
+        map.serialize_entry("metadata_repositories", &p.metadata_repositories)?;
+        map.serialize_entry("new_course_code_count", &p.new_course_code_count)?;
+        map.serialize_entry("plan_count", &p.plan_count)?;
+        map.serialize_entry("record_count", &p.record_count)?;
+        map.serialize_entry("removed_course_code_count", &p.removed_course_code_count)?;
+        map.serialize_entry("routes", &p.routes)?;
+        map.serialize_entry("summary_lines", &p.summary_lines)?;
+        map.serialize_entry("topology", &p.topology)?;
+        map.end()
+    }
+}
+
+struct LifecycleActionsJson<'a>(&'a [RepositoryLifecycleAction]);
+
+impl Serialize for LifecycleActionsJson<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Action<'a> {
+            archived: bool,
+            baseline: &'a Value,
+            default_branch: &'a str,
+            description: &'a str,
+            kind: &'a RepositoryLifecycleKind,
+            private: bool,
+            readme: &'a Option<String>,
+            repo_id: &'a str,
+            template: bool,
+            template_repository: &'a Option<String>,
+            title: &'a str,
+        }
+        let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
+        for action in self.0 {
+            sequence.serialize_element(&Action {
+                archived: action.archived, baseline: &action.baseline,
+                default_branch: &action.default_branch, description: &action.description,
+                kind: &action.kind, private: action.private, readme: &action.readme,
+                repo_id: &action.repo_id, template: action.template,
+                template_repository: &action.template_repository, title: &action.title,
+            })?;
+        }
+        sequence.end()
+    }
+}
+
+struct LifecyclePreviewJson<'a> {
+    preview: &'a RepositoryLifecyclePreview,
+    include_identity: bool,
+}
+
+impl Serialize for LifecyclePreviewJson<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Registry<'a> {
+            baseline: &'a Value,
+            files: &'a BTreeMap<String, Value>,
+            identity_sha256: &'a str,
+            remote_url: &'a str,
+        }
+        let p = self.preview;
+        let mut map = serializer.serialize_map(Some(if self.include_identity { 5 } else { 4 }))?;
+        map.serialize_entry("actions", &LifecycleActionsJson(&p.actions))?;
+        if self.include_identity { map.serialize_entry("identity_sha256", &p.identity_sha256)?; }
+        map.serialize_entry("organization", &p.organization)?;
+        map.serialize_entry("registry", &Registry {
+            baseline: &p.registry.baseline, files: &p.registry.files,
+            identity_sha256: &p.registry.identity_sha256, remote_url: &p.registry.remote_url,
+        })?;
+        map.serialize_entry("summary_lines", &p.summary_lines)?;
+        map.end()
+    }
+}
+
+fn preview_bundle_sha256(state: &RepositorySyncPreview, remote: &RepositoryLifecyclePreview, identity: &str) -> Result<String> {
+    #[derive(Serialize)]
+    struct Bundle<'a> {
+        identity_sha256: &'a str,
+        remote: LifecyclePreviewJson<'a>,
+        state: RepositoryPreviewJson<'a>,
+    }
+    crate::curriculum::serialized_sha256(&Bundle {
+        identity_sha256: identity,
+        remote: LifecyclePreviewJson { preview: remote, include_identity: true },
+        state: RepositoryPreviewJson { preview: state, include_identity: true },
+    })
+}
+
+fn repository_preview_identity(preview: &RepositorySyncPreview) -> Result<String> {
+    crate::curriculum::serialized_sha256(&RepositoryPreviewJson { preview, include_identity: false })
+}
+
+fn finalize_repository_preview(
+    preview: &mut RepositorySyncPreview,
+    baseline: &Value,
+) -> Result<()> {
+    preview.baseline = baseline.clone();
+    preview.identity_sha256.clear();
+    preview.identity_sha256 = repository_preview_identity(preview)?;
+    Ok(())
+}
+
+fn validate_repository_preview(preview: &RepositorySyncPreview) -> Result<()> {
+    if preview.identity_sha256.is_empty()
+        || repository_preview_identity(preview)? != preview.identity_sha256
+    {
+        bail!("本地状态预览已被修改")
+    }
+    validate_state(&preview.topology, &preview.routes, false)?;
+    let manifest_repositories = array_at(&preview.manifest, "repositories")?
+        .iter()
+        .filter_map(|value| value.get("repo_id").and_then(Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let topology_repositories = repositories(&preview.topology)?
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if manifest_repositories != topology_repositories {
+        bail!("manifest 与 topology 的仓库成员不一致")
+    }
+    for descriptor in array_at(&preview.manifest, "course_descriptors")? {
+        let repo_id = string_field(descriptor, "repo_id");
+        if repo_id.is_empty() || !topology_repositories.contains(repo_id) {
+            bail!("课程描述引用不存在的仓库")
+        }
+    }
+    Ok(())
+}
+
+fn validate_review_payload(payload: &Value) -> Result<()> {
+    if payload.get("schema_version").and_then(Value::as_u64) != Some(1) {
+        bail!("审阅文件版本不受支持")
+    }
+    let expected = payload
+        .get("content_sha256")
+        .and_then(Value::as_str)
+        .context("审阅文件缺少内容校验")?;
+    let mut unsigned = payload.clone();
+    unsigned
+        .as_object_mut()
+        .context("审阅文件格式无效")?
+        .remove("content_sha256");
+    if canonical_sha256(&unsigned) != expected {
+        bail!("审阅文件内容已被修改")
+    }
+    Ok(())
+}
+
+fn validate_review_session(
+    diff: &crate::curriculum::CurriculumDiff,
+    decisions: &crate::curriculum::DecisionSet,
+    assignments: &BTreeMap<String, CourseAssignment>,
+) -> Result<()> {
+    crate::curriculum::validate_diff(diff)?;
+    if decisions.diff_identity_sha256 != diff.diff_identity_sha256 {
+        bail!("裁决属于另一批教学差异")
+    }
+    let known_changes = diff
+        .changes
+        .iter()
+        .map(|change| change.change_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if decisions
+        .decisions
+        .keys()
+        .any(|id| !known_changes.contains(id.as_str()))
+    {
+        bail!("裁决包含未知教学差异")
+    }
+    if assignments.keys().any(|code| normalize(code).is_empty()) {
+        bail!("课程归属包含无效代码")
+    }
+    Ok(())
+}
+
+fn review_title(diff: &crate::curriculum::CurriculumDiff, kind: crate::jwts::PlanKind) -> String {
+    let scopes = diff
+        .candidate
+        .plans
+        .iter()
+        .filter(|plan| {
+            diff.current.plans.iter().all(|old| {
+                old.plan_id != plan.plan_id || old.info != plan.info || old.courses != plan.courses
+            })
+        })
+        .map(|plan| {
+            let name = normalized_value(plan.info.get("major_full_name"));
+            if name.is_empty() {
+                normalized_value(plan.info.get("major_name"))
+            } else {
+                name
+            }
+        })
+        .filter(|name| !name.is_empty())
+        .collect::<BTreeSet<_>>();
+    if scopes.is_empty() {
+        format!("{}审阅", kind.label())
+    } else {
+        format!(
+            "{}：{}",
+            kind.label(),
+            scopes.into_iter().collect::<Vec<_>>().join("、")
+        )
     }
 }
 
@@ -2904,16 +4124,17 @@ fn normalize_plan_info(plan_id: &str, info: &Value) -> Value {
             encode_path_component(plan_id)
         )),
     );
-    let aliases = [
-        ("campus", "campus"),
-        ("plan_version", "grade"),
+    let execution = object.get("source_kind").and_then(Value::as_str) == Some("execution")
+        || plan_id.starts_with("hit:execution:");
+    object
+        .entry("source_kind".to_string())
+        .or_insert_with(|| json!(if execution { "execution" } else { "curriculum" }));
+    for (target, source) in [
         ("department_code", "college_code"),
         ("school_name", "college_name"),
         ("major_code", "major_code"),
         ("major_name", "major_name"),
-        ("year", "grade"),
-    ];
-    for (target, source) in aliases {
+    ] {
         if object.get(target).is_none_or(Value::is_null) {
             object.insert(
                 target.to_string(),
@@ -2921,7 +4142,27 @@ fn normalize_plan_info(plan_id: &str, info: &Value) -> Value {
             );
         }
     }
+    if execution {
+        if object.get("entry_cohort").is_none_or(Value::is_null) {
+            object.insert(
+                "entry_cohort".to_string(),
+                info.get("grade").cloned().unwrap_or(Value::Null),
+            );
+        }
+    } else if object.get("plan_version").is_none_or(Value::is_null) {
+        object.insert(
+            "plan_version".to_string(),
+            info.get("grade").cloned().unwrap_or(Value::Null),
+        );
+    }
     object.entry("campus".to_string()).or_insert(json!("hit"));
+    let full_name = object.get("major_name").cloned().unwrap_or(Value::Null);
+    object
+        .entry("major_full_name".to_string())
+        .or_insert(full_name);
+    object
+        .entry("program_type".to_string())
+        .or_insert(Value::Null);
     object
         .entry("source_plan_file".to_string())
         .or_insert_with(|| {
@@ -2932,14 +4173,6 @@ fn normalize_plan_info(plan_id: &str, info: &Value) -> Value {
             ))
         });
     result
-}
-
-fn record_id(plan_id: &str, ordinal: usize) -> String {
-    let mut digest = Sha256::new();
-    digest.update(plan_id.as_bytes());
-    digest.update([0]);
-    digest.update(ordinal.to_string().as_bytes());
-    format!("REC-{}", &format!("{:X}", digest.finalize())[..16])
 }
 
 fn normalized_value(value: Option<&Value>) -> String {
@@ -2958,24 +4191,31 @@ fn atomic_json_many(replacements: &[(&PathBuf, &Value)]) -> Result<()> {
     let mut staged = Vec::new();
     let mut backups = Vec::new();
     for (path, value) in replacements {
-        let parent = path.parent().context("数据路径无效")?;
-        fs::create_dir_all(parent)?;
-        let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-        serde_json::to_writer_pretty(&mut temporary, value)?;
-        temporary.write_all(b"\n")?;
-        temporary.as_file().sync_all()?;
+        let temporary = crate::json_store::stage(path, value)?;
         staged.push(((*path).clone(), temporary));
     }
+    let mut backup_paths = Vec::new();
     for (path, _) in &staged {
         let backup = path.with_extension(format!(
             "{}.update-backup",
             path.extension().and_then(|v| v.to_str()).unwrap_or("json")
         ));
         if backup.exists() {
-            bail!("检测到上次更新留下的备份，请联系维护人员")
+            bail!("检测到上次更新留下的备份，请先恢复该任务")
         }
-        fs::rename(path, &backup)?;
-        backups.push((path.clone(), backup));
+        if !path.is_file() {
+            bail!("原始管理数据缺失，不能切换状态")
+        }
+        backup_paths.push((path.clone(), backup));
+    }
+    for (path, backup) in backup_paths {
+        if let Err(error) = fs::rename(&path, &backup) {
+            for (original, saved) in backups.iter().rev() {
+                fs::rename(saved, original).context("切换失败且无法恢复原文件")?;
+            }
+            return Err(error.into());
+        }
+        backups.push((path, backup));
     }
     let mut installed = Vec::new();
     for (path, temporary) in staged {
@@ -2999,71 +4239,73 @@ fn atomic_json_many(replacements: &[(&PathBuf, &Value)]) -> Result<()> {
 }
 
 fn registry_dynamic_tree(preview: &RepositorySyncPreview) -> Result<BTreeMap<String, Value>> {
+    Ok(registry_dynamic_tree_refs(preview)?.into_iter()
+        .map(|(key, value)| (key, value.into_owned())).collect())
+}
+
+fn registry_dynamic_tree_refs(preview: &RepositorySyncPreview) -> Result<BTreeMap<String, std::borrow::Cow<'_, Value>>> {
+    use std::borrow::Cow;
     let mut files = BTreeMap::new();
-    files.insert(
-        "repository-manifest.json".to_string(),
-        preview.manifest.clone(),
-    );
-    files.insert(
-        "repository-topology.v4.json".to_string(),
-        preview.topology.clone(),
-    );
-    files.insert(
-        "repository-file-routes.v4.json".to_string(),
-        preview.routes.clone(),
-    );
-    for plan in array_at(&preview.manifest, "curriculum_plans")? {
-        let path = string_field(plan, "metadata_path");
-        if path.is_empty() {
-            bail!("培养方案缺少 Registry 路径")
+    files.insert("repository-manifest.json".to_string(), Cow::Borrowed(&preview.manifest));
+    files.insert("repository-topology.v4.json".to_string(), Cow::Borrowed(&preview.topology));
+    files.insert("repository-file-routes.v4.json".to_string(), Cow::Borrowed(&preview.routes));
+    for (field, label) in [
+        ("curriculum_plans", "培养方案"),
+        ("curriculum_records", "课程记录"),
+        ("course_descriptors", "课程描述"),
+    ] {
+        for value in array_at(&preview.manifest, field)? {
+            let path = string_field(value, "metadata_path");
+            if path.is_empty() { bail!("{label}缺少 Registry 路径"); }
+            safe_path(path)?;
+            files.insert(path.to_owned(), Cow::Borrowed(value));
         }
-        safe_path(path)?;
-        files.insert(path.to_string(), plan.clone());
     }
-    for record in array_at(&preview.manifest, "curriculum_records")? {
-        let path = string_field(record, "metadata_path");
-        if path.is_empty() {
-            bail!("课程记录缺少 Registry 路径")
+    let indexes = preview.manifest.get("curriculum_metadata_indexes").context("manifest 缺少课程索引")?;
+    files.insert("indexes/by-plan.json".to_string(), indexes.get("by_plan")
+        .map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(json!({}))));
+    files.insert("indexes/pending-course-code.json".to_string(), indexes.get("pending_course_code")
+        .map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(json!([]))));
+    if let Some(history) = preview.manifest.get("curriculum_history").and_then(Value::as_array) {
+        for entry in history {
+            let history_id = string_field(entry, "history_id");
+            if history_id.is_empty() { bail!("课程历史缺少稳定身份"); }
+            files.insert(format!("curriculum/history/{history_id}.json"), Cow::Borrowed(entry));
         }
-        safe_path(path)?;
-        files.insert(path.to_string(), record.clone());
     }
-    for descriptor in array_at(&preview.manifest, "course_descriptors")? {
-        let path = string_field(descriptor, "metadata_path");
-        if path.is_empty() {
-            bail!("课程描述缺少 Registry 路径")
-        }
-        safe_path(path)?;
-        files.insert(path.to_string(), descriptor.clone());
-    }
-    let indexes = preview
-        .manifest
-        .get("curriculum_metadata_indexes")
-        .context("manifest 缺少课程索引")?;
-    files.insert(
-        "indexes/by-plan.json".to_string(),
-        indexes.get("by_plan").cloned().unwrap_or_else(|| json!({})),
-    );
-    files.insert(
-        "indexes/pending-course-code.json".to_string(),
-        indexes
-            .get("pending_course_code")
-            .cloned()
-            .unwrap_or_else(|| json!([])),
-    );
     Ok(files)
 }
 
+fn registry_files_match(preview: &RepositorySyncPreview, actual: &BTreeMap<String, Value>) -> Result<bool> {
+    let expected = registry_dynamic_tree_refs(preview)?;
+    Ok(expected.len() == actual.len() && expected.iter()
+        .all(|(path, value)| actual.get(path) == Some(value.as_ref())))
+}
+
 fn lifecycle_identity(preview: &RepositoryLifecyclePreview) -> Result<String> {
-    let mut value = serde_json::to_value(preview)?;
-    if let Some(object) = value.as_object_mut() {
-        object.remove("identity_sha256");
-    }
-    Ok(canonical_sha256(&value))
+    crate::curriculum::serialized_sha256(&LifecyclePreviewJson { preview, include_identity: false })
 }
 
 fn save_update_journal(path: &Path, journal: &UpdateExecutionJournal) -> Result<()> {
     atomic_json(path, &serde_json::to_value(journal)?)
+}
+
+fn github_read_request(endpoint: &str, query: Option<&str>) -> Result<std::process::Output> {
+    for attempt in 0..4 {
+        let mut command = Command::new("gh");
+        command.args(["api", "--method", "GET", endpoint]);
+        if let Some(query) = query { command.args(["--jq", query]); }
+        let output = command.output().context("无法启动 GitHub 只读查询")?;
+        let error = String::from_utf8_lossy(&output.stderr);
+        let transient = error.contains(": EOF") || error.contains("unexpected EOF")
+            || error.contains("connection reset") || error.contains("TLS handshake timeout");
+        if output.status.success() || !transient || attempt == 3 {
+            return Ok(output);
+        }
+        eprintln!("GitHub 只读连接中断，正在重试当前请求（{}/3）", attempt + 1);
+        std::thread::sleep(std::time::Duration::from_millis(500 * (attempt + 1)));
+    }
+    unreachable!()
 }
 
 fn remote_repository_metadata(organization: &str, repo_id: &str, remote: &str) -> Result<Value> {
@@ -3081,10 +4323,7 @@ fn remote_repository_metadata(organization: &str, repo_id: &str, remote: &str) -
             "default_branch":"main"
         }));
     }
-    let output = Command::new("gh")
-        .args(["api", &format!("repos/{organization}/{repo_id}")])
-        .output()
-        .context("无法读取 GitHub 仓库信息")?;
+    let output = github_read_request(&format!("repos/{organization}/{repo_id}"), None)?;
     if !output.status.success() {
         let message = String::from_utf8_lossy(&output.stderr);
         if message.contains("404") || message.contains("Not Found") {
@@ -3219,17 +4458,362 @@ fn verify_registry(plan: &RegistrySyncPlan, expected_commit: Option<&str>) -> Re
         &[],
     )?;
     for (relative, expected) in &plan.files {
-        let actual = read_json(&work.join(relative))?;
-        if canonical_sha256(&actual) != canonical_sha256(expected) {
+        if crate::json_store::canonical_sha256(&work.join(relative))? != canonical_sha256(expected) {
             bail!("课程注册表文件校验失败：{relative}")
         }
     }
     Ok(())
 }
 
+fn repository_course_mapping(manifest: &Value, repo_id: &str) -> Result<BTreeMap<String, String>> {
+    Ok(array_at(manifest, "course_descriptors")?.iter()
+        .filter(|row| string_field(row, "repo_id") == repo_id)
+        .map(|row| (string_field(row, "course_code").to_string(), string_field(row, "course_name").to_string()))
+        .collect())
+}
+
+fn refresh_curriculum_metadata(manifest: &mut Value) -> Result<()> {
+    let mut mappings = BTreeMap::<String, BTreeMap<String, String>>::new();
+    for descriptor in array_at(manifest, "course_descriptors")? {
+        mappings.entry(string_field(descriptor, "repo_id").to_string()).or_default()
+            .insert(string_field(descriptor, "course_code").to_string(), string_field(descriptor, "course_name").to_string());
+    }
+    let plan_count = array_at(manifest, "curriculum_plans")?.len();
+    let record_count = array_at(manifest, "curriculum_records")?.len();
+    let descriptor_count = array_at(manifest, "course_descriptors")?.len();
+    let uncoded_count = array_at(manifest, "curriculum_records")?.iter().filter(|record| string_field(record, "course_code").is_empty()).count();
+    let group_count = array_at(manifest, "resource_groups")?.len();
+    let repositories = manifest.get_mut("repositories").and_then(Value::as_array_mut).context("manifest 缺少仓库")?;
+    let mut repository_counts = BTreeMap::<String, usize>::new();
+    for repository in repositories.iter_mut() {
+        let kind = string_field(repository, "repo_type").to_string();
+        *repository_counts.entry(kind.clone()).or_default() += 1;
+        if kind != "course" { continue; }
+        let repo_id = string_field(repository, "repo_id").to_string();
+        let mapping = mappings.get(&repo_id).cloned().unwrap_or_default();
+        repository["description"] = json!(crate::repository_metadata::description(string_field(repository, "display_name"), &mapping)?);
+        repository["course_codes"] = json!(mapping.keys().collect::<Vec<_>>());
+        repository["course_names"] = json!(mapping.values().filter(|name| !name.is_empty()).collect::<BTreeSet<_>>());
+    }
+    let repository_count = repositories.len();
+    let object = manifest.as_object_mut().context("manifest 不是对象")?;
+    let summary = object.entry("summary").or_insert_with(|| json!({})).as_object_mut().context("summary 不是对象")?;
+    for (key, count) in [("repository_count",repository_count),("resource_group_count",group_count),
+        ("course_descriptor_count",descriptor_count),("curriculum_record_count",record_count),
+        ("curriculum_metadata_plan_count",plan_count),("curriculum_metadata_record_count",record_count),
+        ("curriculum_metadata_pending_course_code_record_count",uncoded_count)] {
+        summary.insert(key.to_string(), json!(count));
+    }
+    summary.insert("repository_counts_by_type".to_string(), json!(repository_counts));
+    if let Some(source) = object.get_mut("sources").and_then(|sources| sources.get_mut("curriculum")).and_then(Value::as_object_mut) {
+        source.remove("plan_version");
+        for (key, count) in [("plan_count",plan_count),("record_count",record_count),("coded_record_count",record_count-uncoded_count),
+            ("uncoded_record_count",uncoded_count),("distinct_course_code_count",descriptor_count)] {
+            source.insert(key.to_string(), json!(count));
+        }
+    }
+    Ok(())
+}
+
+fn github_readme(repository: &str) -> Result<Option<(String, String)>> {
+    let output = github_read_request(&format!("repos/{repository}/contents/README.md?ref=main"), None)?;
+    if !output.status.success() {
+        if String::from_utf8_lossy(&output.stderr).contains("404") { return Ok(None); }
+        bail!("无法读取仓库课程映射：{repository}")
+    }
+    let value: Value = serde_json::from_slice(&output.stdout)?;
+    if string_field(&value, "encoding") != "base64" || string_field(&value, "type") != "file" {
+        bail!("仓库 README 格式不支持：{repository}")
+    }
+    let encoded = string_field(&value, "content").split_whitespace().collect::<String>();
+    let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).context("仓库 README 编码无效")?;
+    Ok(Some((string_field(&value, "sha").to_string(), String::from_utf8(bytes).context("仓库 README 不是 UTF-8")?)))
+}
+
+fn merge_managed_course_readme(existing: Option<&str>, generated: &str) -> Result<String> {
+    const HEADING: &str = "## 课程代码与原始课程名";
+    let Some(existing) = existing else { return Ok(generated.to_string()); };
+    let newline = if existing.contains("\r\n") { "\r\n" } else { "\n" };
+    let replacement = generated.split_once(HEADING)
+        .map(|(_, table)| table.trim().replace('\n', newline))
+        .unwrap_or_default();
+    let mut after_heading = None;
+    let mut offset = 0;
+    for line in existing.split_inclusive('\n') {
+        if line.trim() == HEADING {
+            if after_heading.replace(offset + line.len()).is_some() {
+                bail!("README 存在重复课程映射标题，不能自动替换")
+            }
+        }
+        offset += line.len();
+    }
+    let Some(after_heading) = after_heading else {
+        if replacement.is_empty() { return Ok(existing.to_string()); }
+        let separator = if existing.ends_with(&format!("{newline}{newline}")) {
+            String::new()
+        } else if existing.ends_with('\n') {
+            newline.to_string()
+        } else {
+            format!("{newline}{newline}")
+        };
+        return Ok(format!("{existing}{separator}{HEADING}{newline}{newline}{replacement}{newline}"));
+    };
+    let mut table_start = after_heading;
+    let mut table_end = after_heading;
+    let mut table_rows = 0;
+    for line in existing[after_heading..].split_inclusive('\n') {
+        if table_rows == 0 && line.trim().is_empty() {
+            table_start += line.len();
+            table_end = table_start;
+            continue;
+        }
+        if !line.trim_start().starts_with('|') { break; }
+        if table_rows == 0 {
+            let columns = line.trim().trim_matches('|').split('|').map(str::trim).collect::<Vec<_>>();
+            if columns != ["课程代码", "原始课程名"] {
+                bail!("README 课程映射表头无法识别，拒绝覆盖维护者内容")
+            }
+        }
+        table_rows += 1;
+        table_end += line.len();
+    }
+    if table_rows == 1 {
+        bail!("README 课程映射表结构不完整，拒绝自动替换")
+    }
+    let prefix = &existing[..table_start];
+    let suffix = &existing[table_end..];
+    let separator = if table_start != after_heading {
+        String::new()
+    } else if prefix.ends_with('\n') {
+        newline.to_string()
+    } else {
+        format!("{newline}{newline}")
+    };
+    let suffix_separator = if table_rows == 0 && !suffix.is_empty() { newline } else { "" };
+    Ok(format!("{prefix}{separator}{replacement}{newline}{suffix_separator}{suffix}"))
+}
+
+struct GithubLifecycleResponse {
+    success: bool,
+    status: String,
+    stdout: String,
+    stderr: String,
+}
+
+impl GithubLifecycleResponse {
+    fn is_status(&self, status: u16) -> bool {
+        !self.success && self.stderr.contains(&format!("(HTTP {status})"))
+    }
+
+    fn require_success(&self, context: &str) -> Result<Value> {
+        if !self.success {
+            bail!("{context}（{}）\n{}\n{}", self.status, self.stderr.trim(), self.stdout.trim())
+        }
+        if self.stdout.trim().is_empty() { return Ok(Value::Null); }
+        serde_json::from_str(&self.stdout).with_context(|| format!("{context}：GitHub 响应不是 JSON"))
+    }
+}
+
+// Only the transport and polling clock are replaceable; tests run the production ordering.
+trait GithubLifecycleApi {
+    fn request(&mut self, method: &str, endpoint: &str, body: Option<&Value>) -> Result<GithubLifecycleResponse>;
+    fn wait_for_initialization(&mut self) {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
+struct GhLifecycleApi;
+
+impl GithubLifecycleApi for GhLifecycleApi {
+    fn request(&mut self, method: &str, endpoint: &str, body: Option<&Value>) -> Result<GithubLifecycleResponse> {
+        let output = if method == "GET" {
+            github_read_request(endpoint, None)?
+        } else {
+            let mut child = Command::new("gh").args(["api", "--method", method, endpoint, "--input", "-"])
+                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+                .spawn().context("无法启动 GitHub 工具")?;
+            serde_json::to_writer(child.stdin.take().context("无法写入 GitHub 请求")?, body.unwrap_or(&Value::Null))?;
+            child.wait_with_output()?
+        };
+        Ok(GithubLifecycleResponse {
+            success: output.status.success(), status: output.status.to_string(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
+}
+
+fn github_lifecycle_readme(github: &mut impl GithubLifecycleApi, repository: &str, branch: &str) -> Result<Option<(String, String)>> {
+    let branch: String = url::form_urlencoded::byte_serialize(branch.as_bytes()).collect();
+    let response = github.request("GET", &format!("repos/{repository}/contents/README.md?ref={branch}"), None)?;
+    if response.is_status(404) { return Ok(None); }
+    let value = response.require_success(&format!("无法读取仓库课程映射：{repository}"))?;
+    if value["encoding"] != "base64" || value["type"] != "file" {
+        bail!("仓库 README 格式不支持：{repository}")
+    }
+    let encoded = string_field(&value, "content").split_whitespace().collect::<String>();
+    let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).context("仓库 README 编码无效")?;
+    Ok(Some((string_field(&value, "sha").to_string(), String::from_utf8(bytes).context("仓库 README 不是 UTF-8")?)))
+}
+
+fn validate_course_readme(action: &RepositoryLifecycleAction, current: Option<&(String, String)>) -> Result<()> {
+    let Some(expected) = &action.readme else { return Ok(()); };
+    if current.is_some_and(|(_, text)| text == expected) { return Ok(()); }
+    if current.map(|(sha, _)| sha.as_str()) != action.baseline.get("readme_sha").and_then(Value::as_str) {
+        bail!("仓库 README 已变化，拒绝覆盖：{}", action.repo_id)
+    }
+    Ok(())
+}
+
+fn validate_created_repository(repository: &str, action: &RepositoryLifecycleAction, metadata: &Value) -> Result<u64> {
+    if metadata["full_name"].as_str() != Some(repository)
+        || metadata["description"].as_str() != Some(action.description.as_str())
+        || metadata["private"].as_bool() != Some(action.private)
+    {
+        bail!("已存在仓库身份与创建预览不一致，拒绝续接：{repository}")
+    }
+    if let Some(source) = metadata.get("template_repository").filter(|value| !value.is_null()) {
+        if source["full_name"].as_str() != action.template_repository.as_deref() {
+            bail!("已存在仓库模板来源不一致：{repository}")
+        }
+    }
+    metadata["id"].as_u64().filter(|id| *id != 0).context("GitHub 仓库缺少不可变身份")
+}
+
+fn save_creation_checkpoint(journal: &mut UpdateExecutionJournal, path: &Path, repo_id: &str, id: u64) -> Result<()> {
+    journal.repository_results.insert(repo_id.to_string(), format!("created:{id}"));
+    journal.updated_at = now();
+    save_update_journal(path, journal)
+}
+
+fn recover_legacy_creation(
+    github: &mut impl GithubLifecycleApi, organization: &str, actions: &[RepositoryLifecycleAction],
+    journal: &mut UpdateExecutionJournal, path: &Path,
+) -> Result<()> {
+    // The old executor has no creation receipt. Only its exact empty-repository PATCH failure
+    // plus a pristine, time-bounded template root can authorize adopting an existing repository.
+    let Some(error) = journal.error.as_deref() else { return Ok(()); };
+    if journal.status != "failed" || journal.stage != "repositories"
+        || !error.contains("(HTTP 422)") || !error.contains("default_branch")
+        || !error.contains("Cannot update default branch for an empty repository")
+    { return Ok(()); }
+    let candidates: Vec<_> = actions.iter().filter(|action| {
+        action.kind == RepositoryLifecycleKind::Create && action.baseline["exists"] == false
+            && !journal.repository_results.contains_key(&action.repo_id)
+            && error.starts_with(&format!("无法更新仓库设置：{}（{}，", action.title, action.repo_id))
+    }).collect();
+    if candidates.len() != 1 { return Ok(()); }
+    let action = candidates[0];
+    let repository = format!("{organization}/{}", action.repo_id);
+    if github_repository_path(string_field(&action.baseline, "remote_url")).as_deref() != Some(repository.as_str())
+        || action.template_repository.is_none() || action.baseline["readme_sha"].as_str().is_none()
+    { bail!("旧创建任务缺少安全恢复证据：{repository}"); }
+    let metadata = github.request("GET", &format!("repos/{repository}"), None)?.require_success("无法验证旧创建仓库")?;
+    let id = validate_created_repository(&repository, action, &metadata)?;
+    let created = chrono::DateTime::parse_from_rfc3339(string_field(&metadata, "created_at"))?;
+    if created < chrono::DateTime::parse_from_rfc3339(&journal.created_at)?
+        || created > chrono::DateTime::parse_from_rfc3339(&journal.updated_at)?
+        || metadata["archived"] != action.archived || metadata["is_template"] != action.template
+        || metadata["default_branch"] != action.default_branch
+    { bail!("旧创建仓库不满足事务时间或设置证据，拒绝续接：{repository}"); }
+    let commit = github.request("GET", &format!("repos/{repository}/commits/{}", action.default_branch), None)?.require_success("无法验证模板初始提交")?;
+    if !commit["parents"].as_array().is_some_and(Vec::is_empty) || !is_hex(string_field(&commit, "sha"), 40) {
+        bail!("旧创建仓库不是模板初始提交，拒绝续接：{repository}")
+    }
+    let readme = github_lifecycle_readme(github, &repository, &action.default_branch)?;
+    if readme.as_ref().map(|(sha, _)| sha.as_str()) != action.baseline["readme_sha"].as_str() {
+        bail!("旧创建仓库 README 不等于冻结模板，拒绝续接：{repository}")
+    }
+    save_creation_checkpoint(journal, path, &action.repo_id, id)
+}
+
+fn prepare_github_creation(
+    github: &mut impl GithubLifecycleApi, repository: &str, action: &RepositoryLifecycleAction,
+    journal: &mut UpdateExecutionJournal, journal_path: &Path,
+) -> Result<()> {
+    if action.readme.is_none() && action.template_repository.is_none() {
+        bail!("新建非模板仓库缺少真实初始内容：{repository}")
+    }
+    let response = github.request("GET", &format!("repos/{repository}"), None)?;
+    if response.is_status(404) {
+        if journal.repository_results.contains_key(&action.repo_id) {
+            bail!("已记录创建的仓库不可见，拒绝重复创建：{repository}")
+        }
+        let (owner, name) = repository.split_once('/').context("仓库地址无效")?;
+        let (endpoint, body) = if let Some(template) = &action.template_repository {
+            (format!("repos/{template}/generate"), json!({"owner":owner,"name":name,"description":action.description,"private":action.private,"include_all_branches":false}))
+        } else {
+            (format!("orgs/{owner}/repos"), json!({"name":name,"description":action.description,"private":action.private,"auto_init":false,"has_wiki":false}))
+        };
+        let created = github.request("POST", &endpoint, Some(&body))?.require_success(&format!("无法创建仓库：{}（{}）", action.title, action.repo_id))?;
+        let id = validate_created_repository(repository, action, &created)?;
+        // Persist the server-issued immutable ID before any readiness read or settings write.
+        save_creation_checkpoint(journal, journal_path, &action.repo_id, id)?;
+    } else {
+        let metadata = response.require_success(&format!("无法读取创建目标：{repository}"))?;
+        let id = validate_created_repository(repository, action, &metadata)?;
+        if journal.repository_results.get(&action.repo_id) != Some(&format!("created:{id}")) {
+            bail!("同名仓库缺少本事务创建凭据，拒绝续接：{repository}")
+        }
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    for attempt in 0..31 {
+        let metadata = github.request("GET", &format!("repos/{repository}"), None)?.require_success("无法检查初始化仓库身份")?;
+        let id = validate_created_repository(repository, action, &metadata)?;
+        if journal.repository_results.get(&action.repo_id) != Some(&format!("created:{id}")) {
+            bail!("初始化期间仓库身份变化：{repository}")
+        }
+        let response = github.request("GET", &format!("repos/{repository}/commits/{}", action.default_branch), None)?;
+        if response.success {
+            let commit = response.require_success("无法读取初始化提交")?;
+            if !is_hex(string_field(&commit, "sha"), 40) { bail!("初始化提交缺少 SHA：{repository}"); }
+            let current = github_lifecycle_readme(github, repository, &action.default_branch)?;
+            if current.is_some() || action.template_repository.is_none() || action.baseline["readme_sha"].is_null() {
+                validate_course_readme(action, current.as_ref())?;
+                return Ok(());
+            }
+        } else if response.is_status(404) || response.is_status(409) {
+            if action.template_repository.is_none() {
+                // The real README creates the requested initial branch; never PATCH an empty repository.
+                let current = github_lifecycle_readme(github, repository, &action.default_branch)?;
+                validate_course_readme(action, current.as_ref())?;
+                if current.is_none() {
+                    let expected = action.readme.as_ref().context("新仓库缺少真实初始内容")?;
+                    let body = json!({"message":"chore(curriculum): 初始化完整课程代码映射","branch":action.default_branch,
+                        "content":base64::engine::general_purpose::STANDARD.encode(expected.as_bytes())});
+                    github.request("PUT", &format!("repos/{repository}/contents/README.md"), Some(&body))?.require_success("无法初始化仓库课程映射")?;
+                }
+            }
+        } else {
+            response.require_success(&format!("无法检查仓库初始分支：{repository}"))?;
+        }
+        if attempt == 30 || std::time::Instant::now() >= deadline {
+            bail!("等待仓库初始分支与模板 README 就绪超时（60 秒）：{repository}")
+        }
+        github.wait_for_initialization();
+    }
+    unreachable!()
+}
+
+fn synchronize_course_readme(github: &mut impl GithubLifecycleApi, repository: &str, action: &RepositoryLifecycleAction) -> Result<()> {
+    let Some(expected) = &action.readme else { return Ok(()); };
+    let current = github_lifecycle_readme(github, repository, &action.default_branch)?;
+    validate_course_readme(action, current.as_ref())?;
+    if current.as_ref().is_some_and(|(_, text)| text == expected) { return Ok(()); }
+    let mut body = json!({"message":"chore(curriculum): 同步完整课程代码映射","branch":action.default_branch,
+        "content":base64::engine::general_purpose::STANDARD.encode(expected.as_bytes())});
+    if let Some((sha, _)) = current { body["sha"] = json!(sha); }
+    github.request("PUT", &format!("repos/{repository}/contents/README.md"), Some(&body))?
+        .require_success(&format!("无法同步课程映射：{}", action.repo_id))?;
+    Ok(())
+}
+
 fn apply_repository_lifecycle(
+    github: &mut impl GithubLifecycleApi,
     organization: &str,
     action: &RepositoryLifecycleAction,
+    journal: &mut UpdateExecutionJournal,
+    journal_path: &Path,
 ) -> Result<()> {
     let remote = string_field(&action.baseline, "remote_url");
     if !remote.contains("github.com") {
@@ -3259,29 +4843,25 @@ fn apply_repository_lifecycle(
         }
         return Ok(());
     }
-    if action.kind == RepositoryLifecycleKind::Create
-        && !action
-            .baseline
-            .get("exists")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-    {
-        let status = Command::new("gh")
-            .args([
-                "repo",
-                "create",
-                &format!("{organization}/{}", action.repo_id),
-                "--public",
-                "--disable-wiki",
-                "--description",
-                &action.description,
-            ])
-            .status()
-            .context("无法启动 GitHub 工具")?;
-        if !status.success() {
-            bail!("无法创建仓库：{}", action.title)
-        }
+    apply_github_repository_lifecycle(github, organization, action, journal, journal_path)
+}
+
+fn apply_github_repository_lifecycle(
+    github: &mut impl GithubLifecycleApi,
+    organization: &str,
+    action: &RepositoryLifecycleAction,
+    journal: &mut UpdateExecutionJournal,
+    journal_path: &Path,
+) -> Result<()> {
+    let repository = format!("{organization}/{}", action.repo_id);
+    if github_repository_path(string_field(&action.baseline, "remote_url")).as_deref() != Some(repository.as_str()) {
+        bail!("仓库地址与冻结预览不一致：{}", action.repo_id)
     }
+    if action.kind == RepositoryLifecycleKind::Create && action.baseline["exists"] == false {
+        prepare_github_creation(github, &repository, action, journal, journal_path)?;
+    }
+    // Detect conflicts before any settings write; re-read again before PUT for optimistic concurrency.
+    validate_course_readme(action, github_lifecycle_readme(github, &repository, &action.default_branch)?.as_ref())?;
     let body = json!({
         "description":action.description,
         "private":action.private,
@@ -3292,25 +4872,8 @@ fn apply_repository_lifecycle(
         "has_projects":false,
         "has_wiki":false
     });
-    let mut child = Command::new("gh")
-        .args([
-            "api",
-            "--method",
-            "PATCH",
-            &format!("repos/{organization}/{}", action.repo_id),
-            "--input",
-            "-",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("无法启动 GitHub 工具")?;
-    serde_json::to_writer(child.stdin.as_mut().context("无法写入 GitHub 请求")?, &body)?;
-    let output = child.wait_with_output()?;
-    if !output.status.success() {
-        bail!("无法更新仓库设置：{}", action.title)
-    }
+    github.request("PATCH", &format!("repos/{repository}"), Some(&body))?.require_success(&format!("无法更新仓库设置：{}（{}）", action.title, action.repo_id))?;
+    synchronize_course_readme(github, &repository, action)?;
     Ok(())
 }
 
@@ -3318,21 +4881,38 @@ fn verify_repository_lifecycle(
     organization: &str,
     action: &RepositoryLifecycleAction,
 ) -> Result<()> {
+    verify_repository_lifecycle_with(&mut GhLifecycleApi, organization, action)
+}
+
+fn verify_repository_lifecycle_with(
+    github: &mut impl GithubLifecycleApi,
+    organization: &str,
+    action: &RepositoryLifecycleAction,
+) -> Result<()> {
     let remote = string_field(&action.baseline, "remote_url");
-    let actual = remote_repository_metadata(organization, &action.repo_id, remote)?;
-    if actual.get("exists").and_then(Value::as_bool) != Some(true) {
+    let actual = if remote.contains("github.com") {
+        github.request("GET", &format!("repos/{organization}/{}", action.repo_id), None)?.require_success("无法验证 GitHub 仓库")?
+    } else {
+        remote_repository_metadata(organization, &action.repo_id, remote)?
+    };
+    if !remote.contains("github.com") && actual.get("exists").and_then(Value::as_bool) != Some(true) {
         bail!("仓库不存在：{}", action.title)
     }
     if remote.contains("github.com") {
         if actual.get("private").and_then(Value::as_bool) != Some(action.private)
             || actual.get("archived").and_then(Value::as_bool) != Some(action.archived)
-            || actual.get("template").and_then(Value::as_bool) != Some(action.template)
+            || actual.get("is_template").and_then(Value::as_bool) != Some(action.template)
             || actual.get("default_branch").and_then(Value::as_str)
                 != Some(action.default_branch.as_str())
             || actual.get("description").and_then(Value::as_str)
                 != Some(action.description.as_str())
         {
             bail!("仓库设置校验失败：{}", action.title)
+        }
+        if let Some(expected) = &action.readme {
+            if !github_lifecycle_readme(github, &format!("{organization}/{}", action.repo_id), &action.default_branch)?.is_some_and(|(_, text)| text == *expected) {
+                bail!("仓库完整课程映射校验失败：{}", action.repo_id)
+            }
         }
     }
     Ok(())
@@ -3743,9 +5323,51 @@ fn remote_head_allow_missing(remote: &str) -> Result<Option<String>> {
         .map(ToOwned::to_owned))
 }
 
+fn github_repository_path(remote: &str) -> Option<String> {
+    let url = url::Url::parse(remote).ok()?;
+    if url.scheme() != "https" || url.host_str() != Some("github.com")
+        || !url.username().is_empty() || url.password().is_some()
+        || url.query().is_some() || url.fragment().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return None;
+    }
+    let path = url.path().trim_matches('/');
+    let (owner, repository) = path.split_once('/')?;
+    let repository = repository.strip_suffix(".git").unwrap_or(repository);
+    if safe_repo_id(owner).is_err() || safe_repo_id(repository).is_err() {
+        return None;
+    }
+    Some(format!("{owner}/{repository}"))
+}
+
 fn remote_revision(remote: &str) -> Result<Value> {
     if !remote.contains("://") && !Path::new(remote).exists() {
         return Ok(json!({"exists":false,"head":null,"tree":null,"remote_url":remote}));
+    }
+    if let Some(repository) = github_repository_path(remote) {
+        let output = github_read_request(&format!("repos/{repository}/commits/main"), Some("{head:.sha,tree:.commit.tree.sha}"))?;
+        if output.status.success() {
+            let revision: Value = serde_json::from_slice(&output.stdout)?;
+            let head = string_field(&revision, "head");
+            let tree = string_field(&revision, "tree");
+            if !is_hex(head, 40) || !is_hex(tree, 40) {
+                bail!("GitHub 远端版本响应无效")
+            }
+            return Ok(json!({"exists":true,"head":head,"tree":tree,"remote_url":remote}));
+        }
+        let error = String::from_utf8_lossy(&output.stderr);
+        if !error.contains("404") && !error.contains("409") {
+            bail!("无法读取 GitHub 远端版本：{}", error.trim())
+        }
+        let metadata = github_read_request(&format!("repos/{repository}"), Some(".id"))?;
+        if metadata.status.success() {
+            return Ok(json!({"exists":true,"head":null,"tree":null,"remote_url":remote}));
+        }
+        if String::from_utf8_lossy(&metadata.stderr).contains("404") {
+            return Ok(json!({"exists":false,"head":null,"tree":null,"remote_url":remote}));
+        }
+        bail!("无法核对 GitHub 仓库是否存在")
     }
     let output = Command::new("git")
         .args(["ls-remote", remote, "refs/heads/main"])
@@ -3809,43 +5431,17 @@ fn remote_url(template: &str, organization: &str, repo_id: &str) -> String {
 }
 
 fn read_json(path: &Path) -> Result<Value> {
-    let mut bytes = Vec::new();
-    File::open(path)
-        .with_context(|| format!("缺少数据文件：{}", path.display()))?
-        .read_to_end(&mut bytes)?;
-    serde_json::from_slice(&bytes).with_context(|| format!("数据文件损坏：{}", path.display()))
+    crate::json_store::read(path).with_context(|| format!("无法读取管理数据：{}", path.display()))
 }
 
 fn atomic_json(path: &Path, value: &Value) -> Result<()> {
-    let parent = path.parent().context("数据路径无效")?;
-    fs::create_dir_all(parent)?;
-    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-    serde_json::to_writer_pretty(&mut temp, value)?;
-    temp.write_all(b"\n")?;
-    temp.as_file().sync_all()?;
-    temp.persist(path).map_err(|error| error.error)?;
-    Ok(())
+    crate::json_store::write(path, value)
 }
 
 fn canonical_sha256(value: &Value) -> String {
-    let canonical = canonical_json(value);
-    let bytes = serde_json::to_vec(&canonical).expect("canonical JSON");
-    format!("{:x}", Sha256::digest(bytes))
+    crate::curriculum::value_sha256(value)
 }
 
-fn canonical_json(value: &Value) -> Value {
-    match value {
-        Value::Object(object) => {
-            let sorted = object
-                .iter()
-                .map(|(key, value)| (key.clone(), canonical_json(value)))
-                .collect::<BTreeMap<_, _>>();
-            Value::Object(sorted.into_iter().collect())
-        }
-        Value::Array(values) => Value::Array(values.iter().map(canonical_json).collect()),
-        _ => value.clone(),
-    }
-}
 
 fn repositories(topology: &Value) -> Result<&Map<String, Value>> {
     object_at(topology, "repositories")
@@ -4068,12 +5664,12 @@ mod curriculum_rebuild_tests {
                 "resource_group_id":"group-a","display_name":"程序设计","course_names":["程序设计"],
                 "course_codes":["A1"],"grouping_rule":"exact-normalized-course-name"
             }],
-            "curriculum_plans":[{"plan_id":"plan-a","major_name":"计算机科学与技术","school_name":"计算机学院"}],
-            "curriculum_records":[],
+            "curriculum_plans":[{"plan_id":"plan-a","source_kind":"curriculum","plan_version":"2022版","department_code":"01","major_code":"CS","major_name":"计算机科学与技术","school_name":"计算机学院"}],
+            "curriculum_records":[{"record_id":"REC-OLD","source_plan":"plan-a","source_ordinal":0,"course_code":"A1","course_name":"程序设计","credit":3}],
             "course_descriptors":[{
                 "descriptor_id":"course-code:A1","course_code":"A1","course_name":"程序设计",
                 "resource_group_id":"group-a","physical_repository_id":"physical-a","repo_id":"COURSE-A",
-                "record_ids":[]
+                "record_ids":["REC-OLD"]
             }],
             "curriculum_metadata_indexes":{"by_plan":{},"pending_course_code":[]},
             "virtual_collections":[]
@@ -4108,14 +5704,14 @@ mod curriculum_rebuild_tests {
     }
 
     #[test]
-    fn rebuild_preserves_old_binding_and_maps_new_same_name_course() {
+    fn new_same_name_course_requires_explicit_assignment_and_uses_own_group() {
         let (_temp, manager) = fixture();
         let snapshot = CandidateSnapshot {
             generated_at: "now".into(),
             base_url: "test".into(),
             plans: vec![CandidatePlan {
                 plan_id: "plan-a".into(),
-                info: json!({"major_name":"计算机科学与技术","school_name":"计算机学院","college_name":"计算机学院","grade":"2022"}),
+                info: json!({"source_kind":"curriculum","plan_version":"2022版","department_code":"01","major_code":"CS","major_name":"计算机科学与技术","school_name":"计算机学院"}),
                 courses: vec![
                     json!({"course_code":"A1","course_name":"程序设计","credit":3}),
                     json!({"course_code":"A2","course_name":"程序设计","credit":2}),
@@ -4123,35 +5719,29 @@ mod curriculum_rebuild_tests {
                 ],
             }],
         };
-        let preview = manager.rebuild_from_snapshot(&snapshot).unwrap();
-        assert_eq!(preview.plan_count, 1);
-        assert_eq!(preview.record_count, 3);
-        assert_eq!(preview.descriptor_count, 2);
-        assert_eq!(preview.new_course_code_count, 1);
-        assert_eq!(preview.create_repositories, Vec::<String>::new());
-        let descriptors = preview.manifest["course_descriptors"].as_array().unwrap();
-        let a2 = descriptors
+        assert!(manager
+            .rebuild_from_snapshot(&snapshot, &BTreeMap::new())
+            .is_err());
+        let mut assignments = BTreeMap::new();
+        assignments.insert(
+            "A2".to_string(),
+            CourseAssignment::Existing {
+                repo_id: "COURSE-A".to_string(),
+            },
+        );
+        let mut preview = manager
+            .rebuild_from_snapshot(&snapshot, &assignments)
+            .unwrap();
+        finalize_repository_preview(&mut preview, &manager.workspace_identity()).unwrap();
+        let a2 = preview.manifest["course_descriptors"]
+            .as_array()
+            .unwrap()
             .iter()
             .find(|value| value["course_code"] == "A2")
             .unwrap();
         assert_eq!(a2["repo_id"], "COURSE-A");
-        assert_eq!(a2["resource_group_id"], "group-a");
-        let records = preview.manifest["curriculum_records"].as_array().unwrap();
-        assert_eq!(records[0]["record_id"], record_id("plan-a", 0));
-        assert_eq!(
-            preview.manifest["curriculum_metadata_indexes"]["pending_course_code"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-        assert_eq!(
-            preview.routes["course_code_routes"]
-                .as_array()
-                .unwrap()
-                .len(),
-            2
-        );
+        assert_ne!(a2["resource_group_id"], "group-a");
+        assert_eq!(preview.routes["files"], json!([]));
     }
 
     #[test]
@@ -4166,7 +5756,10 @@ mod curriculum_rebuild_tests {
                 courses: vec![json!({"course_code":"A1","course_name":"程序设计"})],
             }],
         };
-        let preview = manager.rebuild_from_snapshot(&snapshot).unwrap();
+        let mut preview = manager
+            .rebuild_from_snapshot(&snapshot, &BTreeMap::new())
+            .unwrap();
+        finalize_repository_preview(&mut preview, &manager.workspace_identity()).unwrap();
         manager.apply_repository_sync_preview(&preview).unwrap();
         assert_eq!(
             manager.manifest["curriculum_records"]
@@ -4211,6 +5804,393 @@ mod registry_lifecycle_tests {
     use super::*;
     use crate::jwts::{CandidatePlan, CandidateSnapshot};
 
+    struct GithubStep {
+        method: &'static str,
+        endpoint: String,
+        body: Option<Value>,
+        response: GithubLifecycleResponse,
+    }
+
+    struct ScriptedGithub {
+        steps: std::collections::VecDeque<GithubStep>,
+        journal_path: PathBuf,
+    }
+
+    impl GithubLifecycleApi for ScriptedGithub {
+        fn request(&mut self, method: &str, endpoint: &str, body: Option<&Value>) -> Result<GithubLifecycleResponse> {
+            let step = self.steps.pop_front().expect("unexpected GitHub request");
+            assert_eq!((method, endpoint), (step.method, step.endpoint.as_str()));
+            if let Some(expected) = step.body { assert_eq!(body, Some(&expected)); }
+            if method != "GET" {
+                let journal = read_json(&self.journal_path).unwrap();
+                assert_eq!(journal["status"], "applying");
+                assert!(journal["error"].is_null());
+            }
+            Ok(step.response)
+        }
+
+        fn wait_for_initialization(&mut self) {
+            let step = self.steps.pop_front().expect("unexpected initialization wait");
+            assert_eq!(step.method, "WAIT");
+            let journal = read_json(&self.journal_path).unwrap();
+            assert_eq!(journal["repository_results"]["NEW"], "created:101");
+        }
+    }
+
+    fn api_step(method: &'static str, endpoint: &str, value: Value) -> GithubStep {
+        GithubStep { method, endpoint: endpoint.into(), body: None, response: GithubLifecycleResponse {
+            success: true, status: "exit code: 0".into(), stdout: value.to_string(), stderr: String::new(),
+        } }
+    }
+
+    fn api_error(method: &'static str, endpoint: &str, code: u16) -> GithubStep {
+        GithubStep { method, endpoint: endpoint.into(), body: None, response: GithubLifecycleResponse {
+            success: false, status: "exit code: 1".into(),
+            stdout: format!("{{\"message\":\"original-response-{code}\",\"errors\":[{{\"field\":\"default_branch\"}}]}}"),
+            stderr: format!("gh: original-error (HTTP {code})"),
+        } }
+    }
+
+    fn lifecycle_action() -> RepositoryLifecycleAction {
+        RepositoryLifecycleAction {
+            repo_id: "NEW".into(), title: "新课程".into(), kind: RepositoryLifecycleKind::Create,
+            description: "精确冻结说明".into(), private: false, archived: false, template: false,
+            default_branch: "main".into(), readme: Some("# 真实课程映射\n".into()),
+            template_repository: Some("Org/template".into()),
+            baseline: json!({"exists":false,"remote_url":"https://github.com/Org/NEW.git","readme_sha":"template-sha"}),
+        }
+    }
+
+    fn lifecycle_metadata(action: &RepositoryLifecycleAction) -> Value {
+        json!({"id":101,"full_name":format!("Org/{}", action.repo_id),"description":action.description,
+            "private":action.private,"archived":action.archived,"is_template":action.template,
+            "default_branch":action.default_branch,"created_at":"2026-09-07T13:54:58Z",
+            "template_repository":action.template_repository.as_ref().map(|source| json!({"full_name":source}))})
+    }
+
+    fn lifecycle_commit() -> Value { json!({"sha":"04a1f685edd1feefa7b5a8b49fd2c6a3397a1acc","parents":[]}) }
+
+    fn lifecycle_readme(sha: &str, text: &str) -> Value {
+        json!({"sha":sha,"type":"file","encoding":"base64","content":base64::engine::general_purpose::STANDARD.encode(text.as_bytes())})
+    }
+
+    fn lifecycle_fixture() -> (TempDir, Manager, RepositorySyncPreview, RepositoryLifecyclePreview, UpdateExecutionJournal, PathBuf) {
+        let (temp, mut manager) = curriculum_rebuild_tests::fixture();
+        let registry = seed_registry(temp.path());
+        manager = manager.with_registry_remote(registry.to_string_lossy());
+        let snapshot = CandidateSnapshot { generated_at:"now".into(),base_url:"test".into(),plans:vec![CandidatePlan {
+            plan_id:"plan-a".into(),info:json!({"major_name":"计算机科学与技术","school_name":"计算机学院"}),
+            courses:vec![json!({"course_code":"A1","course_name":"程序设计"})],
+        }] };
+        let mut state = manager.rebuild_from_snapshot(&snapshot, &BTreeMap::new()).unwrap();
+        finalize_repository_preview(&mut state, &manager.workspace_identity()).unwrap();
+        let mut remote = manager.plan_remote_sync(&state).unwrap();
+        remote.organization = "Org".into();
+        remote.actions = vec![lifecycle_action()];
+        remote.identity_sha256 = lifecycle_identity(&remote).unwrap();
+        let identity = canonical_sha256(&json!({"state":state.identity_sha256,"remote":remote.identity_sha256}));
+        let operation = format!("curriculum-update-{}", &identity[..20]);
+        let path = manager.operations_path.join(format!("{operation}.update.json"));
+        let journal = UpdateExecutionJournal {
+            schema_version:2,operation_id:operation.clone(),preview_identity_sha256:identity,
+            preview_path:manager.operations_path.join(format!("{operation}.update-preview.json")).to_string_lossy().into_owned(),
+            status:"failed".into(),stage:"repositories".into(),
+            registry_commit:Some(sync_registry(&remote.registry, &operation).unwrap()),
+            completed_stages:vec!["registry".into()],repository_results:BTreeMap::new(),
+            error:Some("interrupted".into()),created_at:"2026-09-07T13:50:00Z".into(),updated_at:"2026-09-07T13:55:00Z".into(),
+        };
+        save_update_journal(&path, &journal).unwrap();
+        (temp, manager, state, remote, journal, path)
+    }
+
+    #[test]
+    fn borrowed_preview_hashes_preserve_frozen_identities_and_detect_changes() {
+        let (_temp, _manager, mut state, mut remote, journal, _path) = lifecycle_fixture();
+        state.summary_lines.push("中文\\\"说明".into());
+        state.manifest["unknown"] = json!({"z":[null,true,1.5],"a":"重复"});
+        let mut legacy_state = serde_json::to_value(&state).unwrap();
+        legacy_state.as_object_mut().unwrap().remove("identity_sha256");
+        assert_eq!(repository_preview_identity(&state).unwrap(), canonical_sha256(&legacy_state));
+        remote.registry.files.insert("unknown.json".into(), json!({"z":2,"a":[1,1]}));
+        let mut legacy_remote = serde_json::to_value(&remote).unwrap();
+        legacy_remote.as_object_mut().unwrap().remove("identity_sha256");
+        assert_eq!(lifecycle_identity(&remote).unwrap(), canonical_sha256(&legacy_remote));
+        let bundle = json!({"state":state,"remote":remote,"identity_sha256":journal.preview_identity_sha256});
+        atomic_json(Path::new(&journal.preview_path), &bundle).unwrap();
+        let fingerprint = preview_bundle_sha256(&state, &remote, &journal.preview_identity_sha256).unwrap();
+        assert_eq!(fingerprint, canonical_sha256(&bundle));
+        assert_eq!(fingerprint, crate::json_store::canonical_sha256(Path::new(&journal.preview_path)).unwrap());
+        remote.actions[0].readme = None;
+        assert_ne!(fingerprint, preview_bundle_sha256(&state, &remote, &journal.preview_identity_sha256).unwrap());
+        let mut files = registry_dynamic_tree(&state).unwrap();
+        assert!(registry_files_match(&state, &files).unwrap());
+        files.insert("extra.json".into(), json!(null));
+        assert!(!registry_files_match(&state, &files).unwrap());
+        files.remove("extra.json");
+        files.get_mut("repository-manifest.json").unwrap()["unknown"] = json!("changed");
+        assert!(!registry_files_match(&state, &files).unwrap());
+    }
+
+    fn creation_steps(action: &RepositoryLifecycleAction) -> Vec<GithubStep> {
+        vec![api_error("GET", "repos/Org/NEW", 404), api_step("POST", "repos/Org/template/generate", lifecycle_metadata(action))]
+    }
+
+    fn readiness_steps(action: &RepositoryLifecycleAction, sha: &str, text: &str) -> Vec<GithubStep> {
+        vec![api_step("GET", "repos/Org/NEW", lifecycle_metadata(action)),
+            api_step("GET", "repos/Org/NEW/commits/main", lifecycle_commit()),
+            api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme(sha, text))]
+    }
+
+    fn synchronize_steps(action: &RepositoryLifecycleAction) -> Vec<GithubStep> {
+        let expected = action.readme.as_ref().unwrap();
+        let mut put = api_step("PUT", "repos/Org/NEW/contents/README.md", json!({}));
+        put.body = Some(json!({"message":"chore(curriculum): 同步完整课程代码映射","branch":"main","sha":"template-sha",
+            "content":base64::engine::general_purpose::STANDARD.encode(expected.as_bytes())}));
+        vec![api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("template-sha", "template")),
+            api_step("PATCH", "repos/Org/NEW", lifecycle_metadata(action)),
+            api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("template-sha", "template")), put]
+    }
+
+    fn verification_steps(action: &RepositoryLifecycleAction) -> Vec<GithubStep> {
+        vec![api_step("GET", &format!("repos/Org/{}", action.repo_id), lifecycle_metadata(action)),
+            api_step("GET", &format!("repos/Org/{}/contents/README.md?ref=main", action.repo_id), lifecycle_readme("target-sha", action.readme.as_ref().unwrap()))]
+    }
+
+    #[test]
+    fn template_initialization_waits_for_branch_and_readme_before_patch() {
+        let (_temp, mut manager, state, remote, journal, path) = lifecycle_fixture();
+        let action = &remote.actions[0];
+        let mut steps = creation_steps(action);
+        steps.extend([api_step("GET", "repos/Org/NEW", lifecycle_metadata(action)),
+            api_error("GET", "repos/Org/NEW/commits/main", 409), api_step("WAIT", "", Value::Null)]);
+        steps.extend([api_step("GET", "repos/Org/NEW", lifecycle_metadata(action)),
+            api_step("GET", "repos/Org/NEW/commits/main", lifecycle_commit()),
+            api_error("GET", "repos/Org/NEW/contents/README.md?ref=main", 404), api_step("WAIT", "", Value::Null)]);
+        steps.extend(readiness_steps(action, "template-sha", "template"));
+        steps.extend(synchronize_steps(action));
+        steps.extend(verification_steps(action));
+        steps.extend(verification_steps(action));
+        let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+        let completed = manager.execute_remote_sync_with(&state, &remote, &mut github).unwrap();
+        assert!(github.steps.is_empty());
+        assert_eq!(completed.registry_commit, journal.registry_commit);
+        assert_eq!(completed.status, "completed");
+        assert_eq!(read_json(&path).unwrap()["repository_results"]["NEW"], "completed");
+    }
+
+    #[test]
+    fn interrupted_creation_resumes_without_create_or_completed_registry_writes() {
+        let (_temp, mut manager, state, mut remote, mut journal, old_path) = lifecycle_fixture();
+        let mut done = remote.actions[0].clone();
+        done.repo_id = "DONE".into();
+        done.baseline["remote_url"] = json!("https://github.com/Org/DONE.git");
+        remote.actions.push(done.clone());
+        remote.identity_sha256 = lifecycle_identity(&remote).unwrap();
+        journal.preview_identity_sha256 = canonical_sha256(&json!({"state":state.identity_sha256,"remote":remote.identity_sha256}));
+        journal.operation_id = format!("curriculum-update-{}", &journal.preview_identity_sha256[..20]);
+        let path = old_path.parent().unwrap().join(format!("{}.update.json", journal.operation_id));
+        journal.preview_path = path.with_extension("update-preview.json").to_string_lossy().into_owned();
+        journal.repository_results.insert("DONE".into(), "completed".into());
+        save_update_journal(&path, &journal).unwrap();
+        let action = &remote.actions[0];
+        let mut steps = creation_steps(action);
+        steps.extend(readiness_steps(action, "template-sha", "template"));
+        steps.push(api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("template-sha", "template")));
+        steps.push(api_error("PATCH", "repos/Org/NEW", 422));
+        let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+        assert!(manager.execute_remote_sync_with(&state, &remote, &mut github).is_err());
+        assert!(github.steps.is_empty());
+        let failed = read_json(&path).unwrap();
+        assert_eq!(failed["status"], "failed");
+        assert_eq!(failed["repository_results"]["NEW"], "created:101");
+        for message in ["exit code: 1", "(HTTP 422)", "original-response-422", "default_branch"] {
+            assert!(failed["error"].as_str().unwrap().contains(message));
+        }
+        let mut steps = vec![api_step("GET", "repos/Org/NEW", lifecycle_metadata(action))];
+        steps.extend(readiness_steps(action, "template-sha", "template"));
+        steps.extend(synchronize_steps(action));
+        steps.extend(verification_steps(action));
+        steps.extend(verification_steps(action));
+        steps.extend(verification_steps(&done));
+        github.steps = steps.into();
+        let completed = manager.execute_remote_sync_with(&state, &remote, &mut github).unwrap();
+        assert!(github.steps.is_empty());
+        assert_eq!(completed.registry_commit, journal.registry_commit);
+        assert_eq!(completed.repository_results["DONE"], "completed");
+        assert!(completed.error.is_none());
+    }
+
+    #[test]
+    fn unknown_same_name_and_changed_readme_refuse_all_remote_writes() {
+        for checkpoint in [false, true] {
+            let (_temp, mut manager, state, remote, mut journal, path) = lifecycle_fixture();
+            let action = &remote.actions[0];
+            let mut steps = vec![api_step("GET", "repos/Org/NEW", lifecycle_metadata(action))];
+            if checkpoint {
+                journal.repository_results.insert("NEW".into(), "created:101".into());
+                save_update_journal(&path, &journal).unwrap();
+                steps.extend(readiness_steps(action, "maintainer-sha", "concurrent maintainer content"));
+            }
+            let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+            let error = manager.execute_remote_sync_with(&state, &remote, &mut github).unwrap_err();
+            assert!(error.to_string().contains(if checkpoint { "README 已变化" } else { "缺少本事务创建凭据" }));
+            assert!(github.steps.is_empty());
+            assert_eq!(read_json(&path).unwrap()["status"], "failed");
+        }
+    }
+
+    #[test]
+    fn permanent_github_errors_are_not_retried_and_keep_raw_journal_response() {
+        for failed_method in ["POST", "GET", "PUT"] {
+            let (_temp, mut manager, state, remote, _journal, path) = lifecycle_fixture();
+            let action = &remote.actions[0];
+            let mut steps = creation_steps(action);
+            if failed_method == "POST" {
+                *steps.last_mut().unwrap() = api_error("POST", "repos/Org/template/generate", 403);
+            } else if failed_method == "GET" {
+                steps.extend([api_step("GET", "repos/Org/NEW", lifecycle_metadata(action)),api_error("GET", "repos/Org/NEW/commits/main", 403)]);
+            } else {
+                steps.extend(readiness_steps(action, "template-sha", "template"));
+                steps.extend(synchronize_steps(action));
+                *steps.last_mut().unwrap() = api_error("PUT", "repos/Org/NEW/contents/README.md", 403);
+            }
+            let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+            assert!(manager.execute_remote_sync_with(&state, &remote, &mut github).is_err());
+            assert!(github.steps.is_empty());
+            let failed = read_json(&path).unwrap();
+            for message in ["exit code: 1", "(HTTP 403)", "original-response-403"] {
+                assert!(failed["error"].as_str().unwrap().contains(message));
+            }
+        }
+    }
+
+    #[test]
+    fn template_initialization_timeout_preserves_creation_checkpoint_without_patch() {
+        let (_temp, mut manager, state, remote, _journal, path) = lifecycle_fixture();
+        let action = &remote.actions[0];
+        let mut steps = creation_steps(action);
+        for attempt in 0..31 {
+            steps.extend([api_step("GET", "repos/Org/NEW", lifecycle_metadata(action)),api_error("GET", "repos/Org/NEW/commits/main", 404)]);
+            if attempt < 30 { steps.push(api_step("WAIT", "", Value::Null)); }
+        }
+        let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+        assert!(manager.execute_remote_sync_with(&state, &remote, &mut github).unwrap_err().to_string().contains("就绪超时"));
+        assert!(github.steps.is_empty());
+        assert_eq!(read_json(&path).unwrap()["repository_results"]["NEW"], "created:101");
+    }
+
+    #[test]
+    fn legacy_empty_repository_failure_requires_all_adoption_evidence() {
+        for invalid in ["none", "path", "time", "description", "private", "template", "parents", "readme"] {
+            let temporary = TempDir::new().unwrap();
+            let path = temporary.path().join("journal.json");
+            let action = lifecycle_action();
+            let mut journal = UpdateExecutionJournal {
+                status:"failed".into(),stage:"repositories".into(),created_at:"2026-09-07T13:50:00Z".into(),updated_at:"2026-09-07T13:55:00Z".into(),
+                error:Some(format!("无法更新仓库设置：{}（{}，exit code: 1）\ngh: Validation Failed (HTTP 422)\nCannot update default branch for an empty repository. default_branch", action.title, action.repo_id)),
+                ..UpdateExecutionJournal::default()
+            };
+            save_update_journal(&path, &journal).unwrap();
+            let before = fs::read(&path).unwrap();
+            let mut metadata = lifecycle_metadata(&action);
+            match invalid {
+                "path" => metadata["full_name"] = json!("Other/NEW"),
+                "time" => metadata["created_at"] = json!("2026-09-01T00:00:00Z"),
+                "description" => metadata["description"] = json!("someone else"),
+                "private" => metadata["private"] = json!(true),
+                "template" => metadata["template_repository"]["full_name"] = json!("Org/other-template"),
+                _ => {}
+            }
+            let mut steps = vec![api_step("GET", "repos/Org/NEW", metadata)];
+            if ["none", "parents", "readme"].contains(&invalid) {
+                let mut commit = lifecycle_commit();
+                if invalid == "parents" { commit["parents"] = json!([{"sha":"other"}]); }
+                steps.push(api_step("GET", "repos/Org/NEW/commits/main", commit));
+                if invalid != "parents" {
+                    steps.push(api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme(if invalid == "readme" { "changed" } else { "template-sha" }, "template")));
+                }
+            }
+            let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+            let result = recover_legacy_creation(&mut github, "Org", &[action], &mut journal, &path);
+            assert_eq!(result.is_ok(), invalid == "none");
+            assert!(github.steps.is_empty());
+            if invalid == "none" {
+                assert_eq!(read_json(&path).unwrap()["repository_results"]["NEW"], "created:101");
+            } else {
+                assert_eq!(fs::read(&path).unwrap(), before);
+            }
+        }
+    }
+
+    #[test]
+    fn frozen_identity_failure_does_not_clear_failed_journal() {
+        let (_temp, mut manager, state, mut remote, _journal, path) = lifecycle_fixture();
+        let before = fs::read(&path).unwrap();
+        remote.actions[0].description = "tampered".into();
+        let mut github = ScriptedGithub { steps:Default::default(),journal_path:path.clone() };
+        assert!(manager.execute_remote_sync_with(&state, &remote, &mut github).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn non_template_creation_writes_real_content_before_setting_default_branch() {
+        let temporary = TempDir::new().unwrap();
+        let path = temporary.path().join("journal.json");
+        let mut journal = UpdateExecutionJournal { status:"applying".into(),..UpdateExecutionJournal::default() };
+        save_update_journal(&path, &journal).unwrap();
+        let mut action = lifecycle_action();
+        action.template_repository = None;
+        action.baseline["readme_sha"] = Value::Null;
+        let expected = action.readme.as_ref().unwrap();
+        let mut initial_put = api_step("PUT", "repos/Org/NEW/contents/README.md", json!({}));
+        initial_put.body = Some(json!({"message":"chore(curriculum): 初始化完整课程代码映射","branch":action.default_branch,
+            "content":base64::engine::general_purpose::STANDARD.encode(expected.as_bytes())}));
+        let mut steps = vec![api_error("GET", "repos/Org/NEW", 404),api_step("POST", "orgs/Org/repos", lifecycle_metadata(&action)),
+            api_step("GET", "repos/Org/NEW", lifecycle_metadata(&action)),api_error("GET", "repos/Org/NEW/commits/main", 409),
+            api_error("GET", "repos/Org/NEW/contents/README.md?ref=main", 404),initial_put,api_step("WAIT", "", Value::Null)];
+        steps.extend(readiness_steps(&action, "target-sha", expected));
+        steps.extend([api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("target-sha", expected)),
+            api_step("PATCH", "repos/Org/NEW", lifecycle_metadata(&action)),
+            api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("target-sha", expected))]);
+        let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+        apply_repository_lifecycle(&mut github, "Org", &action, &mut journal, &path).unwrap();
+        assert!(github.steps.is_empty());
+    }
+
+    #[test]
+    fn legacy_creation_resumes_through_executor_and_persists_applying_before_writes() {
+        let (_temp, mut manager, state, remote, mut journal, path) = lifecycle_fixture();
+        let action = &remote.actions[0];
+        journal.error = Some(format!("无法更新仓库设置：{}（{}，exit code: 1）\ngh: Validation Failed (HTTP 422)\nCannot update default branch for an empty repository. default_branch", action.title, action.repo_id));
+        save_update_journal(&path, &journal).unwrap();
+        let mut steps = readiness_steps(action, "template-sha", "template");
+        steps.push(api_step("GET", "repos/Org/NEW", lifecycle_metadata(action)));
+        steps.extend(readiness_steps(action, "template-sha", "template"));
+        steps.extend(synchronize_steps(action));
+        steps.extend(verification_steps(action));
+        steps.extend(verification_steps(action));
+        let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+        let completed = manager.execute_remote_sync_with(&state, &remote, &mut github).unwrap();
+        assert!(github.steps.is_empty());
+        assert_eq!(completed.registry_commit, journal.registry_commit);
+        assert_eq!(completed.repository_results["NEW"], "completed");
+    }
+
+    #[test]
+    fn readme_change_between_settings_and_put_is_not_overwritten() {
+        let (_temp, mut manager, state, remote, _journal, path) = lifecycle_fixture();
+        let action = &remote.actions[0];
+        let mut steps = creation_steps(action);
+        steps.extend(readiness_steps(action, "template-sha", "template"));
+        steps.extend([api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("template-sha", "template")),
+            api_step("PATCH", "repos/Org/NEW", lifecycle_metadata(action)),
+            api_step("GET", "repos/Org/NEW/contents/README.md?ref=main", lifecycle_readme("maintainer-sha", "new maintainer text"))]);
+        let mut github = ScriptedGithub { steps:steps.into(),journal_path:path.clone() };
+        assert!(manager.execute_remote_sync_with(&state, &remote, &mut github).unwrap_err().to_string().contains("README 已变化"));
+        assert!(github.steps.is_empty());
+        assert_eq!(read_json(&path).unwrap()["status"], "failed");
+    }
+
     fn git(cwd: &Path, args: &[&str]) -> String {
         run_git(cwd, args, None, &[]).unwrap()
     }
@@ -4243,6 +6223,26 @@ mod registry_lifecycle_tests {
     }
 
     #[test]
+    fn github_revision_api_only_accepts_exact_https_repository_urls() {
+        assert_eq!(github_repository_path("https://github.com/HIT-Fireworks/COURSE-A.git"), Some("HIT-Fireworks/COURSE-A".into()));
+        for remote in ["https://github.com.evil.test/HIT-Fireworks/COURSE-A.git", "https://user@github.com/HIT-Fireworks/COURSE-A", "https://github.com/HIT-Fireworks/COURSE-A/tree/main", "http://github.com/HIT-Fireworks/COURSE-A", "https://github.com/HIT-Fireworks/COURSE-A?token=secret"] {
+            assert!(github_repository_path(remote).is_none());
+        }
+    }
+
+    #[test]
+    fn readme_mapping_updates_preserve_crlf_and_maintainer_notes() {
+        let generated = crate::repository_metadata::readme(&BTreeMap::from([("A2".into(), "新课程".into())])).unwrap();
+        let original = "# 自定义说明\r\n\r\n保持原文。\r\n\r\n## 课程代码与原始课程名\r\n\r\n| 课程代码 | 原始课程名 |\r\n|---|---|\r\n| `A1` | 旧课程 |\r\n\r\n维护者备注不能丢失。\r\n\r\n### 特别说明\r\n保留子章节。\r\n\r\n## 贡献者\r\n保留贡献名单。\r\n";
+        let updated = merge_managed_course_readme(Some(original), &generated).unwrap();
+        assert!(updated.starts_with("# 自定义说明\r\n\r\n保持原文。\r\n\r\n"));
+        assert!(updated.contains("| `A2` | 新课程 |"));
+        assert!(!updated.contains("| `A1` | 旧课程 |"));
+        assert!(updated.ends_with("维护者备注不能丢失。\r\n\r\n### 特别说明\r\n保留子章节。\r\n\r\n## 贡献者\r\n保留贡献名单。\r\n"));
+        assert_eq!(merge_managed_course_readme(Some(&updated), &generated).unwrap(), updated);
+    }
+
+    #[test]
     fn registry_dynamic_tree_pushes_and_verifies() {
         let (temp, manager) = curriculum_rebuild_tests::fixture();
         let registry = seed_registry(temp.path());
@@ -4255,7 +6255,10 @@ mod registry_lifecycle_tests {
                 courses: vec![json!({"course_code":"A1","course_name":"程序设计"})],
             }],
         };
-        let preview = manager.rebuild_from_snapshot(&snapshot).unwrap();
+        let mut preview = manager
+            .rebuild_from_snapshot(&snapshot, &BTreeMap::new())
+            .unwrap();
+        finalize_repository_preview(&mut preview, &manager.workspace_identity()).unwrap();
         let files = registry_dynamic_tree(&preview).unwrap();
         assert!(files.contains_key("repository-manifest.json"));
         assert!(files
@@ -4276,10 +6279,7 @@ mod registry_lifecycle_tests {
     fn full_update_execution_syncs_registry_and_local_state() {
         let (temp, mut manager) = curriculum_rebuild_tests::fixture();
         let registry = seed_registry(temp.path());
-        std::env::set_var(
-            "FIREWORKS_REGISTRY_REMOTE",
-            registry.to_string_lossy().to_string(),
-        );
+        manager = manager.with_registry_remote(registry.to_string_lossy());
         let snapshot = CandidateSnapshot {
             generated_at: "now".into(),
             base_url: "test".into(),
@@ -4289,7 +6289,10 @@ mod registry_lifecycle_tests {
                 courses: vec![json!({"course_code":"A1","course_name":"程序设计"})],
             }],
         };
-        let preview = manager.rebuild_from_snapshot(&snapshot).unwrap();
+        let mut preview = manager
+            .rebuild_from_snapshot(&snapshot, &BTreeMap::new())
+            .unwrap();
+        finalize_repository_preview(&mut preview, &manager.workspace_identity()).unwrap();
         let remote_preview = manager.plan_remote_sync(&preview).unwrap();
         let journal = manager
             .execute_remote_sync(&preview, &remote_preview)
@@ -4306,17 +6309,13 @@ mod registry_lifecycle_tests {
                 .len(),
             1
         );
-        std::env::remove_var("FIREWORKS_REGISTRY_REMOTE");
     }
 
     #[test]
     fn update_journal_persists_preview_bundle_for_restart_verification() {
         let (temp, mut manager) = curriculum_rebuild_tests::fixture();
         let registry = seed_registry(temp.path());
-        std::env::set_var(
-            "FIREWORKS_REGISTRY_REMOTE",
-            registry.to_string_lossy().to_string(),
-        );
+        manager = manager.with_registry_remote(registry.to_string_lossy());
         let snapshot = CandidateSnapshot {
             generated_at: "now".into(),
             base_url: "test".into(),
@@ -4326,7 +6325,10 @@ mod registry_lifecycle_tests {
                 courses: vec![json!({"course_code":"A1","course_name":"程序设计"})],
             }],
         };
-        let preview = manager.rebuild_from_snapshot(&snapshot).unwrap();
+        let mut preview = manager
+            .rebuild_from_snapshot(&snapshot, &BTreeMap::new())
+            .unwrap();
+        finalize_repository_preview(&mut preview, &manager.workspace_identity()).unwrap();
         let remote_preview = manager.plan_remote_sync(&preview).unwrap();
         let journal = manager
             .execute_remote_sync(&preview, &remote_preview)
@@ -4337,6 +6339,9 @@ mod registry_lifecycle_tests {
         let journals = reloaded.update_journals().unwrap();
         assert_eq!(journals.len(), 1);
         reloaded.verify_update_journal(&journals[0]).unwrap();
-        std::env::remove_var("FIREWORKS_REGISTRY_REMOTE");
     }
 }
+
+#[cfg(test)]
+#[path = "state_update_tests.rs"]
+mod state_update_tests;

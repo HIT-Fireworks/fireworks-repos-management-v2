@@ -21,11 +21,12 @@ use ratatui::{Frame, Terminal};
 use unicode_width::UnicodeWidthChar;
 
 use crate::curriculum::Decision;
-use crate::jwts::{CatalogOption, CrawlSelection};
+use crate::jwts::{CatalogOption, CrawlSelection, PlanKind};
 use crate::state::{
-    human_error, Dashboard, JournalSummary, PlannedOperation, RepositoryDetail,
-    RepositoryLifecyclePreview, RepositorySummary, RepositorySyncPreview, SplitOptions,
-    SplitTarget, SystemStatus, UpdateExecutionJournal, UpdateSession,
+    human_error, CourseAssignment, CourseRepositoryChoice, CurriculumReviewSummary, Dashboard,
+    JournalSummary, PlannedOperation, RepositoryDetail, RepositoryLifecyclePreview,
+    RepositorySummary, RepositorySyncPreview, SplitOptions, SplitTarget, SystemStatus,
+    UpdateExecutionJournal, UpdateSession,
 };
 
 const HOME_ITEMS: [&str; 8] = [
@@ -43,10 +44,15 @@ const HOME_ITEMS: [&str; 8] = [
 enum Page {
     Home,
     UpdateLogin,
+    UpdateKind,
     UpdateGrade,
     UpdateCollege,
     UpdateMajors,
     UpdateDiff,
+    UpdateDiffDetail,
+    UpdateAssignment,
+    UpdateAssignmentSearch,
+    UpdateNewRepository,
     UpdatePreview,
     RemotePreview,
     Browse,
@@ -76,17 +82,17 @@ enum ReviewOrigin {
 enum UnifiedTask {
     Repository(JournalSummary),
     Update(UpdateExecutionJournal),
+    CurriculumReview(CurriculumReviewSummary),
 }
 type LoginRunner = fn(&AtomicBool) -> Result<UpdateSession, String>;
 
 fn run_browser_login(cancelled: &AtomicBool) -> Result<UpdateSession, String> {
-    let cookie = crate::browser_login::BrowserLogin::capture_cookie(
+    let client = crate::browser_login::BrowserLogin::authenticated_client(
         crate::jwts::DEFAULT_HIT_BASE_URL,
         cancelled,
     )
     .map_err(|error| error.to_string())?;
-    UpdateSession::connect(crate::jwts::DEFAULT_HIT_BASE_URL, &cookie)
-        .map_err(|error| error.to_string())
+    UpdateSession::from_client(client, PlanKind::Execution).map_err(|error| error.to_string())
 }
 
 struct UiState {
@@ -113,15 +119,22 @@ struct UiState {
     result_text: String,
     notice: String,
     update_session: Option<UpdateSession>,
+    update_kind_index: usize,
     update_grade_index: usize,
     update_college_index: usize,
     update_major_index: usize,
     update_majors: Vec<CatalogOption>,
     selected_majors: BTreeSet<String>,
     update_diff_index: usize,
+    diff_detail_scroll: u16,
+    pending_assignments: Vec<CourseRepositoryChoice>,
+    assignment_targets: Vec<RepositorySummary>,
+    assignment_filter: String,
+    assignment_index: usize,
     update_preview: Option<RepositorySyncPreview>,
     remote_preview: Option<RepositoryLifecyclePreview>,
     update_journals: Vec<UpdateExecutionJournal>,
+    curriculum_reviews: Vec<CurriculumReviewSummary>,
     login_job: Option<LoginJob>,
     login_runner: LoginRunner,
 }
@@ -143,6 +156,7 @@ impl UiState {
             .cloned()
             .unwrap_or_else(|| "请选择要做的事情".to_string());
         let update_journals = dashboard.client.update_journals().unwrap_or_default();
+        let curriculum_reviews = dashboard.client.curriculum_reviews().unwrap_or_default();
         Self {
             dashboard,
             page: Page::Home,
@@ -167,15 +181,22 @@ impl UiState {
             result_text: String::new(),
             notice,
             update_session: None,
+            update_kind_index: 0,
             update_grade_index: 0,
             update_college_index: 0,
             update_major_index: 0,
             update_majors: Vec::new(),
             selected_majors: BTreeSet::new(),
             update_diff_index: 0,
+            diff_detail_scroll: 0,
+            pending_assignments: Vec::new(),
+            assignment_targets: Vec::new(),
+            assignment_filter: String::new(),
+            assignment_index: 0,
             update_preview: None,
             remote_preview: None,
             update_journals,
+            curriculum_reviews,
             login_job: None,
             login_runner: run_browser_login,
         }
@@ -187,6 +208,11 @@ impl UiState {
             Err(error) => self.notice = human_error(&error),
         }
         self.update_journals = self.dashboard.client.update_journals().unwrap_or_default();
+        self.curriculum_reviews = self
+            .dashboard
+            .client
+            .curriculum_reviews()
+            .unwrap_or_default();
         self.clamp();
     }
 
@@ -219,6 +245,12 @@ impl UiState {
                 .iter()
                 .cloned()
                 .map(UnifiedTask::Update),
+        );
+        tasks.extend(
+            self.curriculum_reviews
+                .iter()
+                .cloned()
+                .map(UnifiedTask::CurriculumReview),
         );
         tasks.sort_by(|left, right| task_updated(right).cmp(task_updated(left)));
         tasks
@@ -265,6 +297,11 @@ impl UiState {
         self.selected_majors.clear();
         self.update_preview = None;
         self.remote_preview = None;
+        self.pending_assignments.clear();
+        self.assignment_targets.clear();
+        self.assignment_filter.clear();
+        self.assignment_index = 0;
+        self.diff_detail_scroll = 0;
         self.input.clear();
     }
 
@@ -362,8 +399,9 @@ impl UiState {
                 self.login_job = None;
                 self.update_session = Some(session);
                 self.update_grade_index = 0;
-                self.page = Page::UpdateGrade;
-                self.notice = "登录成功，请选择培养方案版本或年级。".to_string();
+                self.update_kind_index = 0;
+                self.page = Page::UpdateKind;
+                self.notice = "登录成功，请选择执行教学计划或培养方案。".to_string();
             }
             Ok(Err(error)) => {
                 self.login_job = None;
@@ -374,6 +412,37 @@ impl UiState {
                 self.login_job = None;
                 self.notice = "登录窗口连接已结束，请按 Enter 重试。".to_string();
             }
+        }
+    }
+
+    fn choose_source_kind(&mut self) {
+        let kind = if self.update_kind_index == 0 {
+            PlanKind::Execution
+        } else {
+            PlanKind::Curriculum
+        };
+        let Some(session) = &mut self.update_session else {
+            return;
+        };
+        let result = if session.kind == kind {
+            Ok(())
+        } else {
+            self.dashboard.client.select_source_kind(session, kind)
+        };
+        match result {
+            Ok(()) => {
+                self.update_grade_index = 0;
+                self.update_college_index = 0;
+                self.update_majors.clear();
+                self.selected_majors.clear();
+                self.page = Page::UpdateGrade;
+                self.notice = match kind {
+                    PlanKind::Execution => "选择入学年级；执行计划与培养方案版本分别保存。",
+                    PlanKind::Curriculum => "选择方案版本；版本年份不代表入学年级。",
+                }
+                .to_string();
+            }
+            Err(error) => self.notice = human_error(&error),
         }
     }
 
@@ -404,6 +473,11 @@ impl UiState {
             .client
             .update_majors(session, &grade.code, &college.code)
         {
+            Ok(majors) if majors.is_empty() => {
+                self.update_majors.clear();
+                self.selected_majors.clear();
+                self.notice = "学校确认该版本或年级下暂无专业，请选择其他院系".to_string();
+            }
             Ok(majors) => {
                 self.update_majors = majors;
                 self.update_major_index = 0;
@@ -452,6 +526,7 @@ impl UiState {
             .iter()
             .filter(|major| self.selected_majors.contains(&major.code))
             .map(|major| CrawlSelection {
+                kind: session.kind,
                 grade: grade.code.clone(),
                 college_code: college.code.clone(),
                 college_name: college.name.clone(),
@@ -495,8 +570,9 @@ impl UiState {
             Some(Decision::Accept) => Decision::Reject,
             Some(Decision::Reject) => Decision::Accept,
         };
-        if let Err(error) = session.set_decision(self.update_diff_index, next) {
-            self.notice = human_error(&error);
+        match session.set_decision(self.update_diff_index, next) {
+            Ok(()) => self.persist_review(),
+            Err(error) => self.notice = human_error(&error),
         }
     }
 
@@ -508,6 +584,7 @@ impl UiState {
                 self.notice = "已选择接受全部教务变化".to_string();
             }
         }
+        self.persist_review();
     }
 
     fn reject_all_changes(&mut self) {
@@ -518,10 +595,23 @@ impl UiState {
                 self.notice = "已选择全部保留现状".to_string();
             }
         }
+        self.persist_review();
+    }
+
+    fn persist_review(&mut self) {
+        let Some(session) = &self.update_session else {
+            return;
+        };
+        if session.diff.is_none() {
+            return;
+        }
+        if let Err(error) = self.dashboard.client.save_curriculum_review(session) {
+            self.notice = format!("审阅尚未保存：{}", human_error(&error));
+        }
     }
 
     fn finish_diff_review(&mut self) {
-        let Some(session) = &mut self.update_session else {
+        let Some(session) = &self.update_session else {
             return;
         };
         if session.status.pending_decision_count > 0 {
@@ -531,18 +621,136 @@ impl UiState {
             );
             return;
         }
-        match self
+        match self.dashboard.client.pending_course_assignments(session) {
+            Ok(pending) => {
+                self.pending_assignments = pending;
+                if self.pending_assignments.is_empty() {
+                    self.prepare_update_preview();
+                    return;
+                }
+                match self.dashboard.client.course_assignment_targets() {
+                    Ok(targets) => {
+                        self.assignment_targets = targets;
+                        self.assignment_filter.clear();
+                        self.assignment_index = 0;
+                        self.page = Page::UpdateAssignment;
+                        self.notice =
+                            "为新课程选择资料库；同名建议不等于同一课程，不会自动共享旧文件。"
+                                .to_string();
+                    }
+                    Err(error) => self.notice = human_error(&error),
+                }
+            }
+            Err(error) => self.notice = human_error(&error),
+        }
+    }
+
+    fn assignment_candidates(&self) -> Vec<usize> {
+        let query = self.assignment_filter.trim().to_lowercase();
+        let suggestions = self
+            .pending_assignments
+            .first()
+            .map(|item| item.suggested_repo_ids.as_slice())
+            .unwrap_or(&[]);
+        let mut indices = self
+            .assignment_targets
+            .iter()
+            .enumerate()
+            .filter(|(_, repo)| {
+                query.is_empty()
+                    || repo.display_name.to_lowercase().contains(&query)
+                    || repo.repo_id.to_lowercase().contains(&query)
+                    || repo
+                        .course_names
+                        .iter()
+                        .any(|name| name.to_lowercase().contains(&query))
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        indices
+            .sort_by_key(|index| !suggestions.contains(&self.assignment_targets[*index].repo_id));
+        indices
+    }
+
+    fn choose_course_assignment(&mut self) {
+        if self.pending_assignments.is_empty() {
+            return;
+        }
+        if self.assignment_index == 0 {
+            self.input = self.assignment_filter.clone();
+            self.page = Page::UpdateAssignmentSearch;
+            return;
+        }
+        let candidates = self.assignment_candidates();
+        if self.assignment_index == candidates.len() + 1 {
+            self.input = self.pending_assignments[0].course_name.clone();
+            self.page = Page::UpdateNewRepository;
+            return;
+        }
+        if let Some(index) = candidates.get(self.assignment_index - 1) {
+            let repo_id = self.assignment_targets[*index].repo_id.clone();
+            self.save_course_assignment(CourseAssignment::Existing { repo_id });
+        }
+    }
+
+    fn save_course_assignment(&mut self, assignment: CourseAssignment) {
+        let Some(course) = self.pending_assignments.first() else {
+            return;
+        };
+        let code = course.course_code.clone();
+        let Some(session) = &mut self.update_session else {
+            return;
+        };
+        let result = self
             .dashboard
             .client
-            .materialize_curriculum_update(session)
-            .and_then(|preview| {
-                let remote = self.dashboard.client.plan_remote_sync(&preview)?;
-                Ok((preview, remote))
-            }) {
-            Ok((preview, remote)) => {
+            .assign_course(session, &code, assignment)
+            .and_then(|()| self.dashboard.client.pending_course_assignments(session));
+        match result {
+            Ok(pending) => {
+                self.pending_assignments = pending;
+                self.assignment_filter.clear();
+                self.assignment_index = 0;
+                self.input.clear();
+                if self.pending_assignments.is_empty() {
+                    self.prepare_update_preview();
+                } else {
+                    self.page = Page::UpdateAssignment;
+                    self.notice = format!(
+                        "归属选择已保存，还有 {} 门新课程待分配。",
+                        self.pending_assignments.len()
+                    );
+                }
+            }
+            Err(error) => self.notice = human_error(&error),
+        }
+    }
+
+    fn prepare_update_preview(&mut self) {
+        let Some(session) = &mut self.update_session else {
+            return;
+        };
+        match self.dashboard.client.materialize_curriculum_update(session) {
+            Ok(preview) => {
                 self.update_preview = Some(preview);
-                self.remote_preview = Some(remote);
+                self.remote_preview = None;
                 self.page = Page::UpdatePreview;
+                self.notice =
+                    "本地预览已生成，尚未修改远端。Enter 检查远端，Esc 返回审阅。".to_string();
+            }
+            Err(error) => self.notice = human_error(&error),
+        }
+    }
+
+    fn prepare_update_remote(&mut self) {
+        let Some(preview) = &self.update_preview else {
+            return;
+        };
+        match self.dashboard.client.plan_remote_sync(preview) {
+            Ok(remote) => {
+                self.remote_preview = Some(remote);
+                self.page = Page::RemotePreview;
+                self.notice = "远端检查完成；确认后才写入 Registry 与仓库设置。".to_string();
             }
             Err(error) => self.notice = human_error(&error),
         }
@@ -578,6 +786,7 @@ impl UiState {
     fn move_current(&mut self, down: bool) {
         let len = match self.page {
             Page::Home => HOME_ITEMS.len(),
+            Page::UpdateKind => 2,
             Page::UpdateGrade => self
                 .update_session
                 .as_ref()
@@ -590,6 +799,7 @@ impl UiState {
                 .unwrap_or(0),
             Page::UpdateMajors => self.update_majors.len() + 1,
             Page::UpdateDiff => self.diff_len() + 1,
+            Page::UpdateAssignment => self.assignment_candidates().len() + 2,
             Page::Browse => self.dashboard.repositories.len() + 1,
             Page::MergeSelect => self.merge_candidates().len() + 1,
             Page::SplitSelect => self.split_candidates().len(),
@@ -600,10 +810,12 @@ impl UiState {
         };
         let selected = match self.page {
             Page::Home => &mut self.home_index,
+            Page::UpdateKind => &mut self.update_kind_index,
             Page::UpdateGrade => &mut self.update_grade_index,
             Page::UpdateCollege => &mut self.update_college_index,
             Page::UpdateMajors => &mut self.update_major_index,
             Page::UpdateDiff => &mut self.update_diff_index,
+            Page::UpdateAssignment => &mut self.assignment_index,
             Page::Browse => &mut self.browse_index,
             Page::MergeSelect => &mut self.merge_index,
             Page::SplitSelect => &mut self.split_repo_index,
@@ -923,6 +1135,25 @@ impl UiState {
         let Some(task) = self.current_task() else {
             return;
         };
+        if let UnifiedTask::CurriculumReview(review) = &task {
+            match self
+                .dashboard
+                .client
+                .resume_curriculum_review(std::path::Path::new(&review.path))
+            {
+                Ok(session) => {
+                    self.update_session = Some(session);
+                    self.update_diff_index = 0;
+                    self.diff_detail_scroll = 0;
+                    self.update_preview = None;
+                    self.remote_preview = None;
+                    self.page = Page::UpdateDiff;
+                    self.notice = "已恢复本地审阅和归属选择；不需要重新登录教务。".to_string();
+                }
+                Err(error) => self.notice = human_error(&error),
+            }
+            return;
+        }
         let result: Result<()> = match task {
             UnifiedTask::Repository(journal) => {
                 if journal.recovery_state == "resumable" {
@@ -943,6 +1174,7 @@ impl UiState {
                         .map(|_| ())
                 }
             }
+            UnifiedTask::CurriculumReview(_) => unreachable!("review handled above"),
         };
         self.result_text = result
             .map(|_| "任务处理完成。".to_string())
@@ -961,6 +1193,19 @@ impl UiState {
                         self.page = Page::Browse;
                     }
                     Err(error) => self.notice = human_error(&error),
+                }
+            }
+            Page::UpdateAssignmentSearch => {
+                self.assignment_filter = self.input.trim().to_string();
+                self.assignment_index = 0;
+                self.page = Page::UpdateAssignment;
+            }
+            Page::UpdateNewRepository => {
+                let title = self.input.trim().to_string();
+                if title.is_empty() {
+                    self.notice = "请输入新资料库的名称".to_string();
+                } else {
+                    self.save_course_assignment(CourseAssignment::New { title });
                 }
             }
             Page::MergeName => self.prepare_merge(),
@@ -1034,10 +1279,22 @@ where
 fn handle_key(state: &mut UiState, key: KeyEvent) -> bool {
     if matches!(
         state.page,
-        Page::BrowseSearch | Page::MergeName | Page::SplitName
+        Page::BrowseSearch
+            | Page::MergeName
+            | Page::SplitName
+            | Page::UpdateAssignmentSearch
+            | Page::UpdateNewRepository
     ) {
         match key.code {
             KeyCode::Enter => state.submit_text(),
+            KeyCode::Esc
+                if matches!(
+                    state.page,
+                    Page::UpdateAssignmentSearch | Page::UpdateNewRepository
+                ) =>
+            {
+                state.page = Page::UpdateAssignment
+            }
             KeyCode::Esc => state.go_home(),
             KeyCode::Backspace => {
                 state.input.pop();
@@ -1048,15 +1305,41 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> bool {
         return false;
     }
     match key.code {
+        KeyCode::PageDown if state.page == Page::UpdateDiffDetail => {
+            state.diff_detail_scroll = state.diff_detail_scroll.saturating_add(10)
+        }
+        KeyCode::PageUp if state.page == Page::UpdateDiffDetail => {
+            state.diff_detail_scroll = state.diff_detail_scroll.saturating_sub(10)
+        }
+        KeyCode::Down if state.page == Page::UpdateDiffDetail => {
+            state.diff_detail_scroll = state.diff_detail_scroll.saturating_add(1)
+        }
+        KeyCode::Up if state.page == Page::UpdateDiffDetail => {
+            state.diff_detail_scroll = state.diff_detail_scroll.saturating_sub(1)
+        }
+        KeyCode::Char('v') | KeyCode::Char('V') | KeyCode::Right
+            if state.page == Page::UpdateDiff =>
+        {
+            if state.update_diff_index < state.diff_len() {
+                state.diff_detail_scroll = 0;
+                state.page = Page::UpdateDiffDetail;
+            }
+        }
         KeyCode::Char('q') | KeyCode::Char('Q') if state.page == Page::Home => return true,
         KeyCode::Esc => match state.page {
             Page::Home => return true,
             Page::Detail => state.page = Page::Browse,
-            Page::UpdateGrade
-            | Page::UpdateCollege
-            | Page::UpdateMajors
+            Page::UpdateGrade => state.page = Page::UpdateKind,
+            Page::UpdateCollege => state.page = Page::UpdateGrade,
+            Page::UpdateMajors => state.page = Page::UpdateCollege,
+            Page::UpdateDiffDetail | Page::UpdateAssignment | Page::UpdatePreview => {
+                state.page = Page::UpdateDiff
+            }
+            Page::RemotePreview if state.update_session.is_some() => {
+                state.page = Page::UpdatePreview
+            }
+            Page::UpdateKind
             | Page::UpdateDiff
-            | Page::UpdatePreview
             | Page::RemotePreview
             | Page::Browse
             | Page::MergeSelect
@@ -1090,6 +1373,7 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> bool {
         KeyCode::Enter => match state.page {
             Page::Home => return state.open_home_item(),
             Page::UpdateLogin => state.start_login(),
+            Page::UpdateKind => state.choose_source_kind(),
             Page::UpdateGrade => state.choose_grade(),
             Page::UpdateCollege => state.choose_college(),
             Page::UpdateMajors => state.toggle_major(),
@@ -1100,7 +1384,10 @@ fn handle_key(state: &mut UiState, key: KeyEvent) -> bool {
                     state.cycle_diff_decision();
                 }
             }
-            Page::UpdatePreview | Page::RemotePreview => state.execute_update_preview(),
+            Page::UpdateDiffDetail => state.cycle_diff_decision(),
+            Page::UpdateAssignment => state.choose_course_assignment(),
+            Page::UpdatePreview => state.prepare_update_remote(),
+            Page::RemotePreview => state.execute_update_preview(),
             Page::Browse => state.open_browse(),
             Page::Detail => state.page = Page::Browse,
             Page::MergeSelect => state.toggle_merge(),
@@ -1151,10 +1438,34 @@ fn draw(frame: &mut Frame<'_>, state: &UiState) {
     match state.page {
         Page::Home => draw_home(frame, vertical[1], state),
         Page::UpdateLogin => draw_login_status(frame, vertical[1], state),
+        Page::UpdateKind => draw_options(
+            frame,
+            vertical[1],
+            "选择教学数据来源",
+            &[
+                CatalogOption {
+                    code: "execution".into(),
+                    name: "执行教学计划 — 按入学年级查询课程、模块和毕业要求".into(),
+                },
+                CatalogOption {
+                    code: "curriculum".into(),
+                    name: "培养方案 — 按方案版本查询；版本年份不是入学年级".into(),
+                },
+            ],
+            state.update_kind_index,
+        ),
         Page::UpdateGrade => draw_options(
             frame,
             vertical[1],
-            "选择培养方案版本或年级",
+            if state
+                .update_session
+                .as_ref()
+                .is_some_and(|s| s.kind == PlanKind::Execution)
+            {
+                "选择入学年级"
+            } else {
+                "选择培养方案版本"
+            },
             state
                 .update_session
                 .as_ref()
@@ -1175,6 +1486,22 @@ fn draw(frame: &mut Frame<'_>, state: &UiState) {
         ),
         Page::UpdateMajors => draw_major_select(frame, vertical[1], state),
         Page::UpdateDiff => draw_diff(frame, vertical[1], state),
+        Page::UpdateDiffDetail => draw_diff_detail(frame, vertical[1], state),
+        Page::UpdateAssignment => draw_course_assignment(frame, vertical[1], state),
+        Page::UpdateAssignmentSearch => draw_text_input(
+            frame,
+            vertical[1],
+            "查找现有资料库",
+            "输入资料库名称或已有课程名；留空显示全部",
+            &state.input,
+        ),
+        Page::UpdateNewRepository => draw_text_input(
+            frame,
+            vertical[1],
+            "新建课程资料库",
+            "填写名称，生成预览后仍需确认；不会立即创建远端仓库",
+            &state.input,
+        ),
         Page::UpdatePreview | Page::RemotePreview => draw_update_preview(frame, vertical[1], state),
         Page::Browse => draw_browse(frame, vertical[1], state),
         Page::BrowseSearch => draw_text_input(
@@ -1223,10 +1550,15 @@ fn page_title(page: Page) -> &'static str {
     match page {
         Page::Home => "首页",
         Page::UpdateLogin
+        | Page::UpdateKind
         | Page::UpdateGrade
         | Page::UpdateCollege
         | Page::UpdateMajors
         | Page::UpdateDiff
+        | Page::UpdateDiffDetail
+        | Page::UpdateAssignment
+        | Page::UpdateAssignmentSearch
+        | Page::UpdateNewRepository
         | Page::UpdatePreview => "从教务系统更新数据",
         Page::RemotePreview => "管理远端仓库",
         Page::Browse | Page::BrowseSearch | Page::Detail => "查看资料",
@@ -1307,7 +1639,7 @@ fn draw_login_status(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
         Line::raw(""),
         Line::raw(status),
         Line::raw("程序会自动检测登录结果，无需复制 Cookie。"),
-        Line::raw("浏览器使用独立临时数据目录；登录状态只保存在内存中。"),
+        Line::raw("统一身份认证保存在本机专用浏览器中，可刷新短期教务登录。"),
         Line::raw(""),
         Line::raw("Enter：重试    Esc：取消并返回"),
     ];
@@ -1350,11 +1682,13 @@ fn draw_options(
 }
 
 fn draw_major_select(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
+    let sections = Layout::vertical([Constraint::Min(4), Constraint::Length(5)]).split(area);
+    let table_area = sections[0];
     let total = state.update_majors.len() + 1;
     let rows = visible_range(
         state.update_major_index,
         total,
-        area.height.saturating_sub(3) as usize,
+        table_area.height.saturating_sub(3) as usize,
     )
     .map(|index| {
         if index == state.update_majors.len() {
@@ -1375,7 +1709,7 @@ fn draw_major_select(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
                 },
                 item.name
             ),
-            String::new(),
+            item.code.clone(),
         ])
         .style(selected_style(index == state.update_major_index))
     });
@@ -1384,13 +1718,36 @@ fn draw_major_select(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
             rows,
             [Constraint::Percentage(75), Constraint::Percentage(25)],
         )
-        .header(Row::new(["按 Enter 勾选专业", "选择数"]))
+        .header(Row::new(["专业全名与培养类型", "专业代码"]))
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title(" 选择需要更新的专业 "),
         ),
-        area,
+        table_area,
+    );
+    let selected = state
+        .update_majors
+        .get(state.update_major_index)
+        .map(|major| {
+            format!(
+                "{}\n专业代码：{}。保留官方培养类型；名称相同也不会合并不同专业代码。",
+                major.name, major.code
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "将读取所选 {} 个专业；其他来源、年级和专业的数据保持不变。",
+                state.selected_majors.len()
+            )
+        });
+    frame.render_widget(
+        Paragraph::new(selected).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" 当前选择完整名称 "),
+        ),
+        sections[1],
     );
 }
 
@@ -1441,8 +1798,205 @@ fn draw_diff(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Enter 切换选择 · A 全部接受 · R 全部保留 "),
+                .title(" Enter 选择 · A 接受全部 · R 保留全部 · V 详情 "),
         ),
+        area,
+    );
+}
+
+fn draw_course_assignment(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
+    let Some(course) = state.pending_assignments.first() else {
+        return;
+    };
+    let sections = Layout::vertical([
+        Constraint::Length(6),
+        Constraint::Min(4),
+        Constraint::Length(3),
+    ])
+    .split(area);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{}（{}）\n开课学院：{}\n还有 {} 门新课程需要选择资料库。同名只作为建议，不会合并课程身份或共享旧文件。",
+            course.course_name, course.course_code,
+            if course.offering_colleges.is_empty() { "未标注".to_string() } else { course.offering_colleges.join("、") },
+            state.pending_assignments.len(),
+        )).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" 新课程归属 ")),
+        sections[0],
+    );
+    let candidates = state.assignment_candidates();
+    let rows = visible_range(
+        state.assignment_index,
+        candidates.len() + 2,
+        sections[1].height.saturating_sub(3) as usize,
+    )
+    .map(|index| {
+        let values = if index == 0 {
+            vec![
+                "搜索现有资料库".to_string(),
+                if state.assignment_filter.is_empty() {
+                    "显示全部".to_string()
+                } else {
+                    state.assignment_filter.clone()
+                },
+            ]
+        } else if index == candidates.len() + 1 {
+            vec![
+                "新建独立课程资料库".to_string(),
+                "填写名称后加入预览，不会立即建仓".to_string(),
+            ]
+        } else {
+            let repo = &state.assignment_targets[candidates[index - 1]];
+            let suggested = if course.suggested_repo_ids.contains(&repo.repo_id) {
+                "建议 · "
+            } else {
+                ""
+            };
+            vec![
+                repo.display_name.clone(),
+                format!(
+                    "{suggested}{} 门课程 · {} 个文件",
+                    repo.course_codes.len(),
+                    repo.file_count
+                ),
+            ]
+        };
+        Row::new(values).style(selected_style(index == state.assignment_index))
+    });
+    frame.render_widget(
+        Table::new(
+            rows,
+            [Constraint::Percentage(65), Constraint::Percentage(35)],
+        )
+        .header(Row::new(["资料库名称", "现有内容"]))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" ↑↓ 选择 · Enter 保存归属 · Esc 返回审阅 "),
+        ),
+        sections[1],
+    );
+    frame.render_widget(
+        Paragraph::new(
+            "归属选择只保存在本机。全部课程分配后会显示完整变更预览，确认前不修改远端仓库。",
+        )
+        .wrap(Wrap { trim: false }),
+        sections[2],
+    );
+}
+
+fn academic_field_label(key: &str) -> &str {
+    match key {
+        "course_code" => "课程代码",
+        "course_name" => "课程名称",
+        "course_english_name" => "课程英文名",
+        "credit" => "学分",
+        "total_hours" => "总学时",
+        "assessment_method" => "考核方式",
+        "course_nature" => "课程性质",
+        "course_category" => "课程类别",
+        "offering_college" => "开课学院",
+        "recommended_year_semester" => "推荐学期",
+        "academic_year" => "开课学年",
+        "semester" => "开课学期",
+        "direction" | "major_direction" => "专业方向",
+        "source_kind" => "数据来源",
+        "plan_version" => "方案版本",
+        "entry_cohort" => "入学年级",
+        "department_code" => "院系代码",
+        "school_name" => "院系名称",
+        "major_code" => "专业代码",
+        "major_name" => "专业名称",
+        "major_full_name" => "官方专业全名",
+        "program_type" => "培养类型",
+        "academic_structure" => "模块、毕业要求和备注",
+        "module_tree" => "模块树",
+        "modules" => "模块要求与课程",
+        "requirements" | "graduation_requirements" => "毕业要求",
+        "notes" => "方案备注",
+        "courses" => "课程记录",
+        "hours" => "分项学时",
+        "campus" => "校区",
+        _ => key,
+    }
+}
+
+fn append_academic_value(
+    lines: &mut Vec<Line<'static>>,
+    label: &str,
+    value: &serde_json::Value,
+    depth: usize,
+) {
+    let indent = "  ".repeat(depth);
+    match value {
+        serde_json::Value::Object(fields) if !fields.is_empty() => {
+            lines.push(Line::raw(format!("{indent}{label}")));
+            for (key, child) in fields {
+                append_academic_value(lines, academic_field_label(key), child, depth + 1);
+            }
+        }
+        serde_json::Value::Array(values) if !values.is_empty() => {
+            lines.push(Line::raw(format!("{indent}{label}（{} 项）", values.len())));
+            for (index, child) in values.iter().enumerate() {
+                append_academic_value(lines, &format!("第 {} 项", index + 1), child, depth + 1);
+            }
+        }
+        _ => {
+            let text = match value {
+                serde_json::Value::Null => "未提供".to_string(),
+                serde_json::Value::String(text) if text.is_empty() => "空".to_string(),
+                serde_json::Value::String(text) => text.clone(),
+                serde_json::Value::Bool(value) => if *value { "是" } else { "否" }.to_string(),
+                serde_json::Value::Array(_) | serde_json::Value::Object(_) => "无".to_string(),
+                _ => value.to_string(),
+            };
+            lines.push(Line::raw(format!("{indent}{label}：{text}")));
+        }
+    }
+}
+
+fn draw_diff_detail(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
+    let Some(session) = &state.update_session else {
+        return;
+    };
+    let Some(change) = session.change(state.update_diff_index) else {
+        return;
+    };
+    let decision = match session.decisions.decisions.get(&change.change_id) {
+        Some(Decision::Accept) => "接受教务变化",
+        Some(Decision::Reject) => "保留现状",
+        None => "尚未决定",
+    };
+    let mut lines = vec![
+        Line::styled(
+            change.title.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(change.explanation.clone()),
+        Line::raw(format!("当前选择：{decision}")),
+        Line::raw(""),
+    ];
+    append_academic_value(
+        &mut lines,
+        "当前数据",
+        change.before.as_ref().unwrap_or(&serde_json::Value::Null),
+        0,
+    );
+    lines.push(Line::raw(""));
+    append_academic_value(
+        &mut lines,
+        "教务新数据",
+        change.after.as_ref().unwrap_or(&serde_json::Value::Null),
+        0,
+    );
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((state.diff_detail_scroll, 0))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" ↑↓ / PgUp / PgDn 滚动 · Enter 切换选择 · Esc 返回 "),
+            ),
         area,
     );
 }
@@ -1466,7 +2020,11 @@ fn draw_update_preview(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
         );
     }
     lines.push(Line::raw(""));
-    lines.push(Line::raw("Enter：确认并执行完整同步    Esc：取消"));
+    lines.push(Line::raw(if state.page == Page::UpdatePreview {
+        "Enter：检查远端并继续    Esc：返回审阅（尚未写入远端）"
+    } else {
+        "Enter：确认并执行完整同步    Esc：返回（尚未写入远端）"
+    }));
     frame.render_widget(
         Paragraph::new(lines).wrap(Wrap { trim: false }).block(
             Block::default()
@@ -1806,11 +2364,11 @@ fn draw_task_detail(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
 
 fn draw_system(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
     let status: SystemStatus = state.dashboard.client.system_status();
-    frame.render_widget(Paragraph::new(format!("浏览资料：{}\nGit 工具：{}\nGitHub 登录：{}\n\n{}\n\n教务更新默认使用 HIT iVPN 备用地址；登录信息只保存在内存。", if status.offline_ready { "可以使用" } else { "需要检查" }, if status.git_available { "已安装" } else { "未安装" }, if status.github_logged_in { "已登录" } else { "未登录" }, status.summary)).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" 系统检查 ")), area);
+    frame.render_widget(Paragraph::new(format!("浏览资料：{}\nGit 工具：{}\nGitHub 登录：{}\n\n{}\n\n学校登录保存在本机专用浏览器中；管理数据与任务记录不包含登录凭据。", if status.offline_ready { "可以使用" } else { "需要检查" }, if status.git_available { "已安装" } else { "未安装" }, if status.github_logged_in { "已登录" } else { "未登录" }, status.summary)).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" 系统检查 ")), area);
 }
 
 fn draw_help(frame: &mut Frame<'_>, area: Rect) {
-    frame.render_widget(Paragraph::new("↑↓ 选择，Enter 确认，Esc 返回。\n\n教务更新：粘贴登录 Cookie，选择年级、院系和专业，审阅每条变化，再同步注册表和远端仓库。\n\n远端管理：检查并同步所有仓库的创建、描述、公开性、模板、默认分支和归档状态。\n\n所有操作都会先显示自然语言预览。Cookie 不写入磁盘。").wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" 使用帮助 ")), area);
+    frame.render_widget(Paragraph::new("↑↓ 选择，Enter 确认，Esc 返回。\n\n教务更新：在学校浏览器窗口登录，选择执行教学计划的年级或培养方案的版本、院系和专业。官方专业类型与代码会完整显示。\n\n差异审阅：Enter 选择，V 查看新旧字段，A 全部接受，R 全部保留。选择自动保存，可从任务记录恢复。\n\n新课程：每个代码独立选择现有资料库或新建，不因同名自动共享资料。\n\n预览：先检查本地结果，再检查远端，最后确认才执行。学校暂未返回的课程不等于资料应删除。\n\n统一身份认证保存在本机专用浏览器中，用于刷新教务登录；不需要复制 Cookie。").wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" 使用帮助 ")), area);
 }
 
 fn draw_result(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
@@ -1827,6 +2385,7 @@ fn task_title(task: &UnifiedTask) -> String {
     match task {
         UnifiedTask::Repository(item) => friendly_operation(item.kind.as_deref().unwrap_or("")),
         UnifiedTask::Update(_) => "教务数据与仓库同步".to_string(),
+        UnifiedTask::CurriculumReview(item) => item.title.clone(),
     }
 }
 fn task_status(task: &UnifiedTask) -> &'static str {
@@ -1835,18 +2394,21 @@ fn task_status(task: &UnifiedTask) -> &'static str {
         UnifiedTask::Update(item) if item.status == "completed" => "已完成",
         UnifiedTask::Update(item) if item.status == "failed" => "可以继续",
         UnifiedTask::Update(_) => "处理中",
+        UnifiedTask::CurriculumReview(_) => "等待审阅",
     }
 }
 fn task_updated(task: &UnifiedTask) -> &str {
     match task {
         UnifiedTask::Repository(item) => item.updated_at.as_deref().unwrap_or(""),
         UnifiedTask::Update(item) => &item.updated_at,
+        UnifiedTask::CurriculumReview(item) => &item.updated_at,
     }
 }
 fn task_error(task: &UnifiedTask) -> &str {
     match task {
         UnifiedTask::Repository(item) => item.error.as_deref().unwrap_or("没有记录到错误"),
         UnifiedTask::Update(item) => item.error.as_deref().unwrap_or("没有记录到错误"),
+        UnifiedTask::CurriculumReview(_) => "本地审阅已保存，继续时不会修改远端或要求重新登录。",
     }
 }
 fn friendly_type(value: &str) -> &'static str {
@@ -2072,8 +2634,9 @@ mod tests {
         let mut state = test_state();
         let (sender, receiver) = mpsc::channel();
         let session = UpdateSession {
-            client: crate::jwts::JwtsClient::new(crate::jwts::DEFAULT_HIT_BASE_URL, "SESSION=test")
-                .unwrap(),
+            client: None,
+            kind: PlanKind::Execution,
+            assignments: Default::default(),
             catalog: crate::jwts::CurriculumCatalog {
                 grades: vec![CatalogOption {
                     code: "2025".to_string(),
@@ -2096,7 +2659,7 @@ mod tests {
 
         state.poll_login();
 
-        assert_eq!(state.page, Page::UpdateGrade);
+        assert_eq!(state.page, Page::UpdateKind);
         assert_eq!(state.update_session.unwrap().catalog.grades[0].code, "2025");
     }
     #[test]
@@ -2122,5 +2685,150 @@ mod tests {
     fn unicode_clip_uses_display_width() {
         assert_eq!(display_width("数理A"), 5);
         assert_eq!(clip("数理逻辑", 5), "数理…");
+    }
+
+    fn rendered_text(state: &UiState) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        terminal.draw(|frame| draw(frame, state)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>()
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect()
+    }
+
+    #[test]
+    fn source_selection_distinguishes_version_from_entry_cohort() {
+        let mut state = test_state();
+        state.page = Page::UpdateKind;
+        let text = rendered_text(&state);
+        assert!(text.contains("执行教学计划"));
+        assert!(text.contains("培养方案"));
+        assert!(text.contains("版本年份不是入学年级"));
+        assert_eq!(state.update_kind_index, 0);
+        handle_key(&mut state, press(KeyCode::Down));
+        assert_eq!(state.update_kind_index, 1);
+        handle_key(&mut state, press(KeyCode::Up));
+        assert_eq!(state.update_kind_index, 0);
+    }
+
+    #[test]
+    fn identical_major_names_keep_official_types_and_codes_visible() {
+        let mut state = test_state();
+        state.page = Page::UpdateMajors;
+        state.update_majors = vec![
+            CatalogOption {
+                code: "13B036".into(),
+                name: "人工智能【本】".into(),
+            },
+            CatalogOption {
+                code: "13BE036".into(),
+                name: "人工智能【第二学士学位】".into(),
+            },
+            CatalogOption {
+                code: "13BF036".into(),
+                name: "人工智能【辅修】".into(),
+            },
+        ];
+        let text = rendered_text(&state);
+        for expected in [
+            "人工智能【本】",
+            "人工智能【第二学士学位】",
+            "人工智能【辅修】",
+            "13B036",
+            "13BE036",
+            "13BF036",
+        ] {
+            assert!(text.contains(expected), "missing {expected}");
+        }
+        handle_key(&mut state, press(KeyCode::Enter));
+        handle_key(&mut state, press(KeyCode::Down));
+        handle_key(&mut state, press(KeyCode::Enter));
+        assert_eq!(
+            state.selected_majors,
+            BTreeSet::from(["13B036".into(), "13BE036".into()])
+        );
+    }
+
+    #[test]
+    fn repository_suggestions_do_not_implicitly_assign_a_course() {
+        let mut state = test_state();
+        state.page = Page::UpdateAssignment;
+        state.pending_assignments = vec![CourseRepositoryChoice {
+            course_code: "NEW101".into(),
+            course_name: "高等数学".into(),
+            offering_colleges: vec!["数学学院".into()],
+            suggested_repo_ids: vec!["B".into()],
+        }];
+        state.assignment_targets = state.dashboard.repositories.clone();
+        assert_eq!(state.assignment_candidates(), vec![1, 0]);
+        let text = rendered_text(&state);
+        assert!(text.contains("NEW101") && text.contains("新建独立课程资料库"));
+        handle_key(&mut state, press(KeyCode::Enter));
+        assert_eq!(state.page, Page::UpdateAssignmentSearch);
+        assert_eq!(state.pending_assignments.len(), 1);
+        state.input = "线性代数".into();
+        handle_key(&mut state, press(KeyCode::Enter));
+        assert_eq!(state.page, Page::UpdateAssignment);
+        assert_eq!(state.assignment_candidates(), vec![1]);
+        state.assignment_index = 2;
+        handle_key(&mut state, press(KeyCode::Enter));
+        assert_eq!(state.page, Page::UpdateNewRepository);
+        assert_eq!(state.input, "高等数学");
+        handle_key(&mut state, press(KeyCode::Esc));
+        assert_eq!(state.page, Page::UpdateAssignment);
+        assert_eq!(state.pending_assignments.len(), 1);
+    }
+
+    #[test]
+    fn local_update_preview_does_not_claim_to_have_synced_remotes() {
+        let mut state = test_state();
+        state.page = Page::UpdatePreview;
+        state.update_preview = Some(RepositorySyncPreview {
+            summary_lines: vec!["新增课程代码：1 个".into()],
+            ..RepositorySyncPreview::default()
+        });
+        let text = rendered_text(&state);
+        assert!(text.contains("检查远端并继续"));
+        assert!(text.contains("尚未写入远端"));
+        assert!(!text.contains("确认并执行完整同步"));
+        handle_key(&mut state, press(KeyCode::Esc));
+        assert_eq!(state.page, Page::UpdateDiff);
+    }
+
+    #[test]
+    fn academic_details_preserve_nested_requirements_without_json_input() {
+        let mut lines = Vec::new();
+        append_academic_value(
+            &mut lines,
+            "教务新数据",
+            &serde_json::json!({
+                "credit":4,
+                "major_full_name":"软件工程【第二学士学位】",
+                "academic_structure":{"requirements":[{"课程类别":"专业核心课","学分":7}]},
+                "校方新增约束":"同时满足门数与学分"
+            }),
+            0,
+        );
+        let text = lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        for expected in [
+            "学分：4",
+            "官方专业全名",
+            "第二学士学位",
+            "毕业要求",
+            "专业核心课",
+            "同时满足门数与学分",
+        ] {
+            assert!(text.contains(expected), "missing {expected}");
+        }
     }
 }
