@@ -54,8 +54,11 @@ fn fixture() -> (TempDir, Manager, String) {
         "COURSE-A",
         &[
             ("README.md", "source"),
-            ("notes/a.txt", "A"),
-            ("notes/b.txt", "B"),
+            ("a.txt", "A"),
+            ("b.txt", "B"),
+            ("LICENSE", "license preserved"),
+            (".github/workflows/check.yml", "workflow preserved"),
+            ("private-notes.txt", "unmanaged preserved"),
         ],
     );
     let workspace = root.join("workspace");
@@ -69,7 +72,7 @@ fn fixture() -> (TempDir, Manager, String) {
                 "repo_type":"course",
                 "display_name":"课程 A",
                 "physical_repository_id":"physical-a",
-                "member_resource_group_ids":["group-a","group-b"],
+                "course_codes":["A1","B1"],
                 "lineage":{"kind":"fixture","source_repo_ids":["COURSE-A"]}
             }
         }
@@ -81,8 +84,8 @@ fn fixture() -> (TempDir, Manager, String) {
         "repository_heads":{"COURSE-A":head},
         "files":[
             {"repo_id":"COURSE-A","path":"README.md","course_codes":[],"size":6},
-            {"repo_id":"COURSE-A","path":"notes/a.txt","course_codes":["A1"],"size":1},
-            {"repo_id":"COURSE-A","path":"notes/b.txt","course_codes":["B1"],"size":1}
+            {"repo_id":"COURSE-A","path":"a.txt","course_codes":["A1"],"size":1},
+            {"repo_id":"COURSE-A","path":"b.txt","course_codes":["B1"],"size":1}
         ],
         "course_code_routes":[
             {"course_code":"A1","repo_id":"COURSE-A","physical_repository_id":"physical-a"},
@@ -98,15 +101,11 @@ fn fixture() -> (TempDir, Manager, String) {
             "display_name":"课程 A",
             "description":"课程 A",
             "course_codes":["A1","B1"],
-            "member_resource_group_ids":["group-a","group-b"]
+            "physical_repository_id":"physical-a"
         }],
-        "resource_groups":[
-            {"resource_group_id":"group-a","display_name":"课程甲","course_names":["课程甲"],"course_codes":["A1"]},
-            {"resource_group_id":"group-b","display_name":"课程乙","course_names":["课程乙"],"course_codes":["B1"]}
-        ],
         "course_descriptors":[
-            {"course_code":"A1","course_name":"课程甲"},
-            {"course_code":"B1","course_name":"课程乙"}
+            {"course_code":"A1","course_name":"课程甲","repo_id":"COURSE-A","physical_repository_id":"physical-a"},
+            {"course_code":"B1","course_name":"课程乙","repo_id":"COURSE-A","physical_repository_id":"physical-a"}
         ],
         "virtual_collections":[]
     });
@@ -127,19 +126,19 @@ fn fixture() -> (TempDir, Manager, String) {
 fn native_split_runs_without_python_and_preserves_routes() {
     let (temp, mut manager, source_head) = fixture();
     let options = manager.split_options("COURSE-A").unwrap();
-    assert_eq!(options.groups.len(), 2);
-    assert_eq!(options.loose_files.len(), 1);
+    assert_eq!(options.courses.iter().map(|course| course.course_code.as_str()).collect::<Vec<_>>(), vec!["A1", "B1"]);
+    assert!(options.loose_files.iter().any(|file| file.internal_path == "private-notes.txt"));
     let targets = vec![
         SplitTarget {
             repo_id: "COURSE-A".into(),
             display_name: "课程甲资料".into(),
-            resource_group_ids: vec!["group-a".into()],
-            paths: vec!["README.md".into()],
+            course_codes: vec!["A1".into()],
+            paths: vec!["README.md".into(), "private-notes.txt".into()],
         },
         SplitTarget {
             repo_id: "MANAGED-B".into(),
             display_name: "课程乙资料".into(),
-            resource_group_ids: vec!["group-b".into()],
+            course_codes: vec!["B1".into()],
             paths: vec![],
         },
     ];
@@ -178,6 +177,19 @@ fn native_split_runs_without_python_and_preserves_routes() {
     assert_eq!(journals.len(), 1);
     assert_eq!(journals[0].recovery_state, "completed");
     manager.verify(&journals[0]).unwrap();
+    let source = temp.path().join("remotes/COURSE-A.git");
+    let target = temp.path().join("remotes/MANAGED-B.git");
+    assert_eq!(git(&source, &["show", "main:LICENSE"]), "license preserved");
+    assert_eq!(git(&source, &["show", "main:private-notes.txt"]), "unmanaged preserved");
+    assert_eq!(git(&source, &["show", "main:.github/workflows/check.yml"]), "workflow preserved");
+    assert_eq!(git(&target, &["show", "main:b.txt"]), "B");
+    assert!(!git(&source, &["ls-tree", "-r", "--name-only", "main"]).lines().any(|path| path == "b.txt"));
+    assert_eq!(manager.manifest["course_descriptors"][1]["repo_id"], "MANAGED-B");
+    let merged = manager.plan_merge(&["COURSE-A".into(), "MANAGED-B".into()], "COURSE-A", "合并课程资料").unwrap();
+    manager.apply(&merged).unwrap();
+    assert_eq!(git(&source, &["show", "main:b.txt"]), "B");
+    assert!(manager.routes["course_code_routes"].as_array().unwrap().iter().all(|route| route["repo_id"] == "COURSE-A"));
+    assert!(manager.manifest["course_descriptors"].as_array().unwrap().iter().all(|descriptor| descriptor["repo_id"] == "COURSE-A"));
 }
 
 #[test]
@@ -187,13 +199,13 @@ fn tampered_native_journal_is_rejected() {
         SplitTarget {
             repo_id: "COURSE-A".into(),
             display_name: "课程甲资料".into(),
-            resource_group_ids: vec!["group-a".into()],
-            paths: vec!["README.md".into()],
+            course_codes: vec!["A1".into()],
+            paths: vec!["README.md".into(), "private-notes.txt".into()],
         },
         SplitTarget {
             repo_id: "MANAGED-B".into(),
             display_name: "课程乙资料".into(),
-            resource_group_ids: vec!["group-b".into()],
+            course_codes: vec!["B1".into()],
             paths: vec![],
         },
     ];
@@ -217,13 +229,13 @@ fn created_empty_target_is_valid_during_resume() {
         SplitTarget {
             repo_id: "COURSE-A".into(),
             display_name: "课程甲资料".into(),
-            resource_group_ids: vec!["group-a".into()],
-            paths: vec!["README.md".into()],
+            course_codes: vec!["A1".into()],
+            paths: vec!["README.md".into(), "private-notes.txt".into()],
         },
         SplitTarget {
             repo_id: "MANAGED-B".into(),
             display_name: "课程乙资料".into(),
-            resource_group_ids: vec!["group-b".into()],
+            course_codes: vec!["B1".into()],
             paths: vec![],
         },
     ];
@@ -252,13 +264,13 @@ fn remote_baseline_freezes_actor_and_source_tree() {
         SplitTarget {
             repo_id: "COURSE-A".into(),
             display_name: "课程甲资料".into(),
-            resource_group_ids: vec!["group-a".into()],
-            paths: vec!["README.md".into()],
+            course_codes: vec!["A1".into()],
+            paths: vec!["README.md".into(), "private-notes.txt".into()],
         },
         SplitTarget {
             repo_id: "MANAGED-B".into(),
             display_name: "课程乙资料".into(),
-            resource_group_ids: vec!["group-b".into()],
+            course_codes: vec!["B1".into()],
             paths: vec![],
         },
     ];
@@ -278,4 +290,50 @@ fn remote_baseline_freezes_actor_and_source_tree() {
     assert!(source["tree"]
         .as_str()
         .is_some_and(|value| is_hex(value, 40)));
+}
+
+fn direct_targets() -> Vec<SplitTarget> {
+    vec![
+        SplitTarget { repo_id: "COURSE-A".into(), display_name: "课程甲".into(), course_codes: vec!["A1".into()], paths: vec!["README.md".into(), "private-notes.txt".into()] },
+        SplitTarget { repo_id: "MANAGED-B".into(), display_name: "课程乙".into(), course_codes: vec!["B1".into()], paths: vec![] },
+    ]
+}
+
+#[test]
+fn shared_file_requires_all_codes_in_one_target_even_with_explicit_path() {
+    let (_temp, mut manager, _) = fixture();
+    manager.routes["files"][1]["course_codes"] = json!(["A1", "B1"]);
+    let mut targets = direct_targets();
+    targets[0].paths.push("a.txt".into());
+    assert!(manager.build_split_plan("COURSE-A", &targets).is_err());
+    targets[0].course_codes.push("B1".into());
+    targets[1].course_codes.clear();
+    targets[0].paths.clear();
+    targets[1].paths.push("README.md".into());
+    let plan = manager.build_split_plan("COURSE-A", &targets).unwrap();
+    assert!(plan["after"]["routes"]["files"].as_array().unwrap().iter()
+        .filter(|file| !string_array(file, "course_codes").is_empty()).all(|file| file["repo_id"] == "COURSE-A"));
+}
+
+#[test]
+fn material_free_code_splits_without_inventing_files() {
+    let (temp, mut manager, _) = fixture();
+    manager.routes["files"][2]["course_codes"] = json!(["A1"]);
+    manager.routes["course_code_routes"][1]["has_material"] = json!(false);
+    atomic_json(&manager.routes_path, &manager.routes).unwrap();
+    let plan = manager.plan_split("COURSE-A", &direct_targets()).unwrap();
+    manager.apply(&plan).unwrap();
+    assert!(!manager.routes["files"].as_array().unwrap().iter().any(|file| file["repo_id"] == "MANAGED-B"));
+    assert_eq!(manager.routes["course_code_routes"][1]["repo_id"], "MANAGED-B");
+    assert_eq!(git(&temp.path().join("remotes/MANAGED-B.git"), &["ls-tree", "-r", "--name-only", "main"]), "");
+}
+
+#[test]
+fn merge_rejects_same_path_without_synthesizing_container_directories() {
+    let (_temp, mut manager, _) = fixture();
+    let split = manager.plan_split("COURSE-A", &direct_targets()).unwrap();
+    manager.apply(&split).unwrap();
+    let other = manager.routes["files"].as_array_mut().unwrap().iter_mut().find(|file| file["repo_id"] == "MANAGED-B").unwrap();
+    other["path"] = json!("a.txt");
+    assert!(manager.build_merge_plan(&["COURSE-A".into(), "MANAGED-B".into()], "COURSE-A", "合并").is_err());
 }

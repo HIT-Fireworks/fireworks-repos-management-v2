@@ -65,7 +65,6 @@ pub struct RepositorySummary {
     pub description: String,
     pub course_codes: Vec<String>,
     pub course_names: Vec<String>,
-    pub member_resource_group_ids: Vec<String>,
     #[serde(default)]
     pub unowned_paths: Vec<String>,
     pub file_count: usize,
@@ -152,16 +151,15 @@ impl PlannedOperation {
 pub struct SplitTarget {
     pub repo_id: String,
     pub display_name: String,
-    pub resource_group_ids: Vec<String>,
+    pub course_codes: Vec<String>,
     pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SemanticGroup {
-    pub internal_id: String,
+pub struct SplitCourse {
+    pub course_code: String,
     pub title: String,
-    pub course_names: Vec<String>,
-    pub course_codes: Vec<String>,
+    pub shared_course_codes: Vec<String>,
     pub file_count: usize,
     pub bytes: u64,
     pub sample_paths: Vec<String>,
@@ -178,7 +176,7 @@ pub struct LooseFile {
 pub struct SplitOptions {
     pub source_repo_id: String,
     pub source_title: String,
-    pub groups: Vec<SemanticGroup>,
+    pub courses: Vec<SplitCourse>,
     pub loose_files: Vec<LooseFile>,
 }
 
@@ -449,6 +447,8 @@ impl Manager {
         self.topology = read_json(&self.topology_path)?;
         self.routes = read_json(&self.routes_path)?;
         validate_state(&self.topology, &self.routes, false)?;
+        validate_direct_manifest(&self.manifest)?;
+        validate_resource_layout(&self.manifest, &self.routes)?;
         Ok(())
     }
 
@@ -1725,108 +1725,30 @@ impl Manager {
     }
 
     pub fn split_options(&self, repo_id: &str) -> Result<SplitOptions> {
-        let row = self
-            .repository_rows()?
-            .into_iter()
-            .find(|row| row.repo_id == repo_id)
+        let row = self.repository_rows()?.into_iter().find(|row| row.repo_id == repo_id)
             .context("没有找到这份资料")?;
-        if !row.inventory_complete {
-            bail!("这份资料还没有完成文件清点，暂时不能拆分。")
-        }
-        let topology_groups = repositories(&self.topology)?
-            .get(repo_id)
-            .map(|value| string_array(value, "member_resource_group_ids"))
-            .unwrap_or_default();
-        let group_ids = if topology_groups.is_empty() {
-            self.manifest_repository(repo_id)
-                .map(|value| string_array(value, "member_resource_group_ids"))
-                .unwrap_or_default()
-        } else {
-            topology_groups
-        };
-        let resource_groups = self.resource_group_index();
-        let repo_files: Vec<_> = array_at(&self.routes, "files")?
-            .iter()
-            .filter(|value| string_field(value, "repo_id") == repo_id)
-            .cloned()
-            .collect();
-        let mut groups = Vec::new();
-        for id in &group_ids {
-            let Some(group) = resource_groups.get(id) else {
-                continue;
-            };
-            let codes = string_array(group, "course_codes");
-            let names = string_array(group, "course_names");
-            let mut assigned = Vec::new();
-            let code_set: HashSet<_> = codes.iter().map(String::as_str).collect();
-            for file in &repo_files {
-                let file_codes = string_array(file, "course_codes");
-                let matches = group_ids
-                    .iter()
-                    .filter(|candidate| {
-                        resource_groups
-                            .get(*candidate)
-                            .map(|value| {
-                                let candidate_codes: HashSet<_> =
-                                    string_array(value, "course_codes").into_iter().collect();
-                                file_codes.iter().any(|code| candidate_codes.contains(code))
-                            })
-                            .unwrap_or(false)
-                    })
-                    .count();
-                if matches == 1
-                    && file_codes
-                        .iter()
-                        .any(|code| code_set.contains(code.as_str()))
-                {
-                    assigned.push(file.clone());
-                }
-            }
-            groups.push(SemanticGroup {
-                internal_id: id.to_string(),
-                title: string_field(group, "display_name").to_string(),
-                course_names: names,
-                course_codes: codes,
+        if !row.inventory_complete { bail!("这份资料还没有完成文件清点，暂时不能拆分。") }
+        let files: Vec<_> = array_at(&self.routes, "files")?.iter()
+            .filter(|file| string_field(file, "repo_id") == repo_id).collect();
+        let names: BTreeMap<_, _> = array_at(&self.manifest, "course_descriptors")?.iter()
+            .map(|descriptor| (string_field(descriptor, "course_code"), string_field(descriptor, "course_name"))).collect();
+        let courses = row.course_codes.iter().map(|code| {
+            let assigned: Vec<_> = files.iter().filter(|file| string_array(file, "course_codes").contains(code)).collect();
+            SplitCourse {
+                course_code: code.clone(),
+                title: names.get(code.as_str()).copied().unwrap_or(code).to_string(),
+                shared_course_codes: assigned.iter().flat_map(|file| string_array(file, "course_codes"))
+                    .filter(|other| other != code).collect::<BTreeSet<_>>().into_iter().collect(),
                 file_count: assigned.len(),
-                bytes: assigned
-                    .iter()
-                    .map(|value| value.get("size").and_then(Value::as_u64).unwrap_or(0))
-                    .sum(),
-                sample_paths: assigned
-                    .iter()
-                    .filter_map(|value| value.get("path").and_then(Value::as_str))
-                    .take(5)
-                    .map(ToOwned::to_owned)
-                    .collect(),
-            });
-        }
-        groups.sort_by(|left, right| left.title.cmp(&right.title));
-        let loose_files = repo_files
-            .iter()
-            .filter(|file| {
-                let file_codes = string_array(file, "course_codes");
-                let matches = groups
-                    .iter()
-                    .filter(|group| {
-                        let codes: HashSet<_> =
-                            group.course_codes.iter().map(String::as_str).collect();
-                        file_codes.iter().any(|code| codes.contains(code.as_str()))
-                    })
-                    .count();
-                matches != 1
-            })
-            .map(|file| LooseFile {
-                internal_path: string_field(file, "path").to_string(),
-                title: friendly_path(string_field(file, "path")),
-                size: file.get("size").and_then(Value::as_u64).unwrap_or(0),
-            })
-            .collect();
-        Ok(SplitOptions {
-            source_repo_id: row.repo_id,
-            source_title: row.display_name,
-            groups,
-            loose_files,
-        })
+                bytes: assigned.iter().map(|file| file.get("size").and_then(Value::as_u64).unwrap_or(0)).sum(),
+                sample_paths: assigned.iter().take(5).map(|file| string_field(file, "path").to_string()).collect(),
+            }
+        }).collect();
+        let mut loose_files: Vec<_> = files.iter().filter(|file| string_array(file, "course_codes").is_empty())
+            .map(|file| LooseFile { internal_path: string_field(file, "path").to_string(),
+                title: friendly_path(string_field(file, "path")), size: file.get("size").and_then(Value::as_u64).unwrap_or(0) }).collect();
+        loose_files.extend(self.source_loose_files(repo_id)?);
+        Ok(SplitOptions { source_repo_id: row.repo_id, source_title: row.display_name, courses, loose_files })
     }
 
     pub fn automatic_repo_id(&self, title: &str, semantic_keys: &[String]) -> String {
@@ -1859,6 +1781,7 @@ impl Manager {
         Ok(())
     }
     pub fn apply(&mut self, plan: &PlannedOperation) -> Result<Value> {
+        self.require_current_workspace()?;
         validate_plan_identity(&plan.plan)?;
         if self.plan_phase(&plan.plan) != "before" {
             bail!("资料状态已经变化，请重新开始这次操作。")
@@ -1898,6 +1821,7 @@ impl Manager {
     }
 
     pub fn resume(&mut self, journal: &JournalSummary) -> Result<Value> {
+        self.require_current_workspace()?;
         if journal.recovery_state != "resumable" {
             bail!("这项任务不能自动继续，请先查看系统检查。")
         }
@@ -2014,14 +1938,7 @@ impl Manager {
         let mut result = Vec::new();
         for (repo_id, topology) in repositories(&self.topology)? {
             let manifest = manifest_repos.get(repo_id);
-            let topology_codes = string_array(topology, "course_codes");
-            let codes = if topology_codes.is_empty() {
-                manifest
-                    .map(|value| string_array(value, "course_codes"))
-                    .unwrap_or_default()
-            } else {
-                topology_codes
-            };
+            let codes = string_array(topology, "course_codes");
             let mut names = BTreeSet::new();
             for code in &codes {
                 if let Some(name) = descriptors.get(code) {
@@ -2032,14 +1949,6 @@ impl Manager {
                 .iter()
                 .filter(|value| string_field(value, "repo_id") == repo_id)
                 .collect();
-            let topology_groups = string_array(topology, "member_resource_group_ids");
-            let member_groups = if topology_groups.is_empty() {
-                manifest
-                    .map(|value| string_array(value, "member_resource_group_ids"))
-                    .unwrap_or_default()
-            } else {
-                topology_groups
-            };
             result.push(RepositorySummary {
                 repo_id: repo_id.clone(),
                 repo_type: string_field(topology, "repo_type").to_string(),
@@ -2057,7 +1966,6 @@ impl Manager {
                     .to_string(),
                 course_codes: codes,
                 course_names: names.into_iter().collect(),
-                member_resource_group_ids: member_groups,
                 unowned_paths: repo_files
                     .iter()
                     .filter(|value| string_array(value, "course_codes").is_empty())
@@ -2086,20 +1994,14 @@ impl Manager {
             .find(|value| string_field(value, "repo_id") == repo_id)
     }
 
-    fn resource_group_index(&self) -> HashMap<String, &Value> {
-        array_at(&self.manifest, "resource_groups")
-            .unwrap_or(&[])
-            .iter()
-            .filter_map(|value| {
-                value
-                    .get("resource_group_id")
-                    .and_then(Value::as_str)
-                    .map(|id| (id.to_string(), value))
-            })
-            .collect()
-    }
 
     fn prepare_plan(&self, mut plan: Value) -> Result<PlannedOperation> {
+        self.require_current_workspace()?;
+        let manifest = manifest_for_routes(&self.manifest, &plan["after"]["topology"], &plan["after"]["routes"])?;
+        plan["after"]["manifest_sha256"] = json!(canonical_sha256(&manifest));
+        validate_resource_layout(&manifest, &plan["after"]["routes"])?;
+        plan["after"]["manifest"] = manifest;
+        validate_direct_manifest(&self.manifest)?;
         let operation_id = string_field(&plan, "operation_id").to_string();
         let organization = string_field(&self.topology, "organization").to_string();
         let actor = current_actor(&self.remote_template)?;
@@ -2154,9 +2056,104 @@ impl Manager {
                 "targets":target_baseline
             }
         });
+        self.preserve_source_tree(&mut plan)?;
         let identity = plan_identity_sha256(&plan);
         plan["core"]["plan_identity_sha256"] = json!(identity);
         Ok(plan_result(PathBuf::new(), plan))
+    }
+
+    fn preserve_source_tree(&self, plan: &mut Value) -> Result<()> {
+        let temp = TempDir::new().context("无法创建预览 Git 工作区")?;
+        run_git(temp.path(), &["init", "--bare"], None, &[])?;
+        let sources = object_at(&plan["details"], "source_repository_heads")?.clone();
+        let targets: BTreeSet<_> = string_array(&plan["after"]["routes"], "unresolved_repository_heads").into_iter().collect();
+        let mut moves = array_at(&plan["details"], "file_moves")?.to_vec();
+        let mut occupied = HashMap::<String, HashSet<String>>::new();
+        for item in &moves {
+            let target = string_field(item, "target_repo_id");
+            if !targets.contains(target) { bail!("文件迁移指向操作范围外的目标仓库") }
+            reserve_target_path(string_field(item, "target_path"), occupied.entry(target.to_string()).or_default())?;
+        }
+        for (repo, expected_head) in sources {
+            let (head, tree) = self.frozen_source_tree(&repo, temp.path())?;
+            if expected_head.as_str() != Some(head.as_str()) { bail!("源仓库冻结版本不一致") }
+            let mut owners = BTreeMap::<String, String>::new();
+            for item in moves.iter().filter(|item| string_field(item, "source_repo_id") == repo) {
+                let path = string_field(item, "source_path");
+                if !tree.contains_key(path) { bail!("仓库 {repo} 的清单包含冻结源树中不存在的文件：{path}") }
+                if owners.insert(path.to_string(), string_field(item, "target_repo_id").to_string()).is_some() {
+                    bail!("同一源文件被重复迁移")
+                }
+            }
+            let boundaries = source_dependency_boundaries(temp.path(), &head, &tree, &self.manifest)?;
+            // Only evidenced dependency scopes propagate ownership, never categories or years.
+            loop {
+                let mut changed = false;
+                for boundary in &boundaries {
+                    let destinations: BTreeSet<_> = boundary.iter().filter_map(|path| owners.get(path)).cloned().collect();
+                    if destinations.len() > 1 { bail!("软件包或相对引用文档被分到了多个目标仓库，请保持完整结构。") }
+                    if let Some(owner) = destinations.into_iter().next() {
+                        for path in boundary {
+                            if !owners.contains_key(path) { owners.insert(path.clone(), owner.clone()); changed = true; }
+                        }
+                    }
+                }
+                if !changed { break; }
+            }
+            for path in tree.keys() {
+                if moves.iter().any(|item| string_field(item, "source_repo_id") == repo && string_field(item, "source_path") == path) { continue; }
+                let target = owners.get(path).cloned()
+                    .or_else(|| (repository_infrastructure(path) && targets.contains(&repo)).then(|| repo.clone()))
+                    .or_else(|| (targets.len() == 1).then(|| targets.iter().next().cloned()).flatten())
+                    .or_else(|| repository_infrastructure(path).then(|| targets.iter().next().cloned()).flatten())
+                    .with_context(|| format!("源仓库 {repo} 有未清点文件 {path}，请在拆分路径选择中明确去向后重新预览。"))?;
+                reserve_target_path(path, occupied.entry(target.clone()).or_default())?;
+                moves.push(json!({"source_repo_id":repo,"source_path":path,"target_repo_id":target,"target_path":path,"preserved_unmanaged":true}));
+            }
+            // An all-new split must not produce repositories without the source explanation/license.
+            // Copy original blobs, and reject collisions instead of overwriting another source's metadata.
+            if targets.len() > 1 && !targets.contains(&repo) {
+                for required in ["readme", "license"] {
+                    let paths: Vec<_> = tree.keys().filter(|path| root_metadata_kind(path) == Some(required)).collect();
+                    if paths.is_empty() { bail!("源仓库 {repo} 缺少 {required}，请补齐说明和许可后再拆为全新仓库。") }
+                    for target in &targets {
+                        for path in &paths {
+                            if moves.iter().any(|item| string_field(item, "target_repo_id") == target && string_field(item, "target_path") == path.as_str()) { continue; }
+                            reserve_target_path(path, occupied.entry(target.clone()).or_default())?;
+                            moves.push(json!({"source_repo_id":repo,"source_path":path,"target_repo_id":target,"target_path":path,"preserved_unmanaged":true}));
+                        }
+                    }
+                }
+            }
+        }
+        plan["details"]["file_moves"] = json!(moves);
+        Ok(())
+    }
+
+    fn source_loose_files(&self, repo: &str) -> Result<Vec<LooseFile>> {
+        let temp = TempDir::new().context("无法创建预览 Git 工作区")?;
+        run_git(temp.path(), &["init", "--bare"], None, &[])?;
+        let (_, tree) = self.frozen_source_tree(repo, temp.path())?;
+        let files = array_at(&self.routes, "files")?;
+        Ok(tree.keys().filter(|path| !repository_infrastructure(path))
+            .filter(|path| !files.iter().any(|file| string_field(file, "repo_id") == repo && string_field(file, "path") == path.as_str()))
+            .map(|path| LooseFile { internal_path: path.clone(), title: friendly_path(path), size: 0 }).collect())
+    }
+
+    fn frozen_source_tree(&self, repo: &str, object_repo: &Path) -> Result<(String, BTreeMap<String, (String, String)>)> {
+        let head = object_at(&self.routes, "repository_heads")?.get(repo).and_then(Value::as_str).context("源仓库缺少冻结版本")?.to_string();
+        let remote = remote_url(&self.remote_template, string_field(&self.topology, "organization"), repo);
+        fetch_commit(object_repo, &remote, &head, &format!("refs/source/{repo}"))?;
+        let output = run_git(object_repo, &["ls-tree", "-r", "-z", &head], None, &[])?;
+        let mut tree = BTreeMap::new();
+        for entry in output.split('\0').filter(|entry| !entry.is_empty()) {
+            let (metadata, path) = entry.split_once('\t').context("源树格式无效")?;
+            let fields: Vec<_> = metadata.split_whitespace().collect();
+            if fields.len() != 3 || fields[1] != "blob" { bail!("源仓库 {repo} 含非普通文件 {path}，请先显式处理。") }
+            if safe_path(path)? != path { bail!("源树路径不是规范路径：{path}") }
+            tree.insert(path.to_string(), (fields[0].to_string(), fields[2].to_string()));
+        }
+        Ok((head, tree))
     }
 
     fn build_split_plan(&self, source_repo_id: &str, targets: &[SplitTarget]) -> Result<Value> {
@@ -2175,17 +2172,8 @@ impl Manager {
         if targets.len() < 2 {
             bail!("至少需要分成两份资料。")
         }
-        let topology_groups = string_array(&source, "member_resource_group_ids");
-        let manifest_groups: BTreeSet<_> = if topology_groups.is_empty() {
-            self.manifest_repository(source_repo_id)
-                .map(|value| string_array(value, "member_resource_group_ids"))
-                .unwrap_or_default()
-                .into_iter()
-                .collect()
-        } else {
-            topology_groups.into_iter().collect()
-        };
-        let mut group_target = HashMap::new();
+        let source_codes: BTreeSet<_> = string_array(&source, "course_codes").into_iter().collect();
+        let mut code_target = HashMap::new();
         let mut path_target = HashMap::new();
         let mut seen_targets = HashSet::new();
         for target in targets {
@@ -2198,18 +2186,13 @@ impl Manager {
             {
                 bail!("目标资料已经存在，请换一个名称。")
             }
-            if target.resource_group_ids.is_empty() && target.paths.is_empty() {
-                bail!("每份目标资料至少要包含一组课程或一个文件。")
+            if target.course_codes.is_empty() && target.paths.is_empty() {
+                bail!("每份目标资料至少要包含一个课程代码或一个文件。")
             }
-            for id in &target.resource_group_ids {
-                if !manifest_groups.contains(id) {
-                    bail!("选择中包含不属于源资料的课程组。")
-                }
-                if group_target
-                    .insert(id.clone(), target.repo_id.clone())
-                    .is_some()
-                {
-                    bail!("同一课程组被分到了两份资料。")
+            for code in &target.course_codes {
+                if !source_codes.contains(code) { bail!("课程代码 {code} 不属于源仓库。") }
+                if code_target.insert(code.clone(), target.repo_id.clone()).is_some() {
+                    bail!("课程代码 {code} 被重复分配。")
                 }
             }
             for path in &target.paths {
@@ -2222,19 +2205,8 @@ impl Manager {
                 }
             }
         }
-        if group_target.keys().cloned().collect::<BTreeSet<_>>() != manifest_groups {
-            bail!("还有课程组没有分配，请完成全部选择。")
-        }
-        let resource_groups = self.resource_group_index();
-        let mut group_codes = HashMap::<String, HashSet<String>>::new();
-        for id in &manifest_groups {
-            group_codes.insert(
-                id.clone(),
-                resource_groups
-                    .get(id)
-                    .map(|value| string_array(value, "course_codes").into_iter().collect())
-                    .unwrap_or_default(),
-            );
+        if code_target.keys().cloned().collect::<BTreeSet<_>>() != source_codes {
+            bail!("还有课程代码没有分配，请完成全部选择。")
         }
         let mut after_routes = self.routes.clone();
         let route_files = after_routes
@@ -2244,6 +2216,8 @@ impl Manager {
         let mut moves = Vec::new();
         let mut source_paths = HashSet::new();
         let mut routed_counts = HashMap::<String, usize>::new();
+        let mut occupied = HashMap::<String, HashSet<String>>::new();
+        route_files.sort_by_key(|file| (string_field(file, "repo_id").to_string(), string_field(file, "path").to_string()));
         for file in route_files.iter_mut() {
             if string_field(file, "repo_id") != source_repo_id {
                 continue;
@@ -2251,19 +2225,14 @@ impl Manager {
             let path = string_field(file, "path").to_string();
             source_paths.insert(path.clone());
             let codes = string_array(file, "course_codes");
-            let matching_groups = manifest_groups
-                .iter()
-                .filter(|id| {
-                    group_codes
-                        .get(*id)
-                        .is_some_and(|group| codes.iter().any(|code| group.contains(code)))
-                })
-                .collect::<Vec<_>>();
-            let semantic_target = if matching_groups.len() == 1 {
-                group_target.get(matching_groups[0]).cloned()
-            } else {
-                None
-            };
+            let mut owners = BTreeSet::new();
+            for code in &codes {
+                owners.insert(code_target.get(code).with_context(|| format!("文件 {path} 的课程代码 {code} 不属于源仓库"))?.clone());
+            }
+            if owners.len() > 1 {
+                bail!("文件“{}”由课程 {} 共享，这些课程必须分到同一个目标仓库。", friendly_path(&path), codes.join("、"))
+            }
+            let semantic_target = owners.into_iter().next();
             let explicit_target = path_target.get(&path).cloned();
             if let (Some(left), Some(right)) = (&semantic_target, &explicit_target) {
                 if left != right {
@@ -2272,13 +2241,17 @@ impl Manager {
             }
             let target = explicit_target
                 .or(semantic_target)
+                .or_else(|| (repository_infrastructure(&path) && seen_targets.contains(source_repo_id)).then(|| source_repo_id.to_string()))
+                .or_else(|| repository_infrastructure(&path).then(|| targets.first().map(|target| target.repo_id.clone())).flatten())
                 .with_context(|| format!("文件“{}”还没有选择去向。", friendly_path(&path)))?;
+            let target_path = reserve_target_path(&path, occupied.entry(target.clone()).or_default())?;
+            file["path"] = json!(target_path);
             file["repo_id"] = json!(target);
             moves.push(json!({
                 "source_repo_id": source_repo_id,
                 "source_path": path,
                 "target_repo_id": target,
-                "target_path": path
+                "target_path": target_path
             }));
             *routed_counts.entry(target).or_default() += 1;
         }
@@ -2291,16 +2264,7 @@ impl Manager {
                     continue;
                 }
                 let code = string_field(route, "course_code");
-                let target = manifest_groups
-                    .iter()
-                    .find_map(|id| {
-                        group_codes
-                            .get(id)
-                            .is_some_and(|codes| codes.contains(code))
-                            .then(|| group_target.get(id).cloned())
-                            .flatten()
-                    })
-                    .context("课程代码没有分配到目标资料")?;
+                let target = code_target.get(code).cloned().context("课程代码没有分配到目标资料")?;
                 let target_topology = targets
                     .iter()
                     .find(|item| item.repo_id == target)
@@ -2318,8 +2282,11 @@ impl Manager {
                 });
             }
         }
-        if path_target.keys().any(|path| !source_paths.contains(path)) {
-            bail!("选择中包含不存在的文件。")
+        for (path, target) in &path_target {
+            if !source_paths.contains(path) {
+                let target_path = reserve_target_path(path, occupied.entry(target.clone()).or_default())?;
+                moves.push(json!({"source_repo_id":source_repo_id,"source_path":path,"target_repo_id":target,"target_path":target_path,"preserved_unmanaged":true}));
+            }
         }
         let mut after_topology = self.topology.clone();
         let repos = after_topology
@@ -2343,7 +2310,7 @@ impl Manager {
                     "repo_type": string_field(&source,"repo_type"),
                     "display_name": target.display_name,
                     "physical_repository_id": physical_id,
-                    "member_resource_group_ids": target.resource_group_ids,
+                    "course_codes": target.course_codes,
                     "lineage": {"kind":"split","source_repo_ids":[source_repo_id]}
                 }),
             );
@@ -2438,30 +2405,15 @@ impl Manager {
         };
         let mut occupied = HashSet::new();
         let mut moves = Vec::new();
-        let mut relocations = Vec::new();
+        let relocations: Vec<Value> = Vec::new();
         for indices in by_path.values() {
             let mut sorted = indices.clone();
             sorted.sort_by_key(|index| string_field(&route_files[*index], "repo_id") != preferred);
-            for (position, index) in sorted.into_iter().enumerate() {
+            for index in sorted {
                 let original_repo = string_field(&route_files[index], "repo_id").to_string();
                 let original_path = string_field(&route_files[index], "path").to_string();
-                let mut target_path = original_path.clone();
-                if position > 0 || occupied.contains(&target_path.to_lowercase()) {
-                    target_path = format!("merged-from/{original_repo}/{original_path}");
-                    let base = target_path.clone();
-                    let mut suffix = 1;
-                    while occupied.contains(&target_path.to_lowercase()) {
-                        suffix += 1;
-                        target_path = format!("{base}.conflict-{suffix}");
-                    }
-                    relocations.push(json!({
-                        "source_repo_id":original_repo,
-                        "source_path":original_path,
-                        "target_path":target_path
-                    }));
-                }
+                let target_path = reserve_target_path(&original_path, &mut occupied)?;
                 safe_path(&target_path)?;
-                occupied.insert(target_path.to_lowercase());
                 route_files[index]["repo_id"] = json!(target_repo_id);
                 route_files[index]["path"] = json!(target_path);
                 moves.push(json!({
@@ -2482,19 +2434,9 @@ impl Manager {
             .filter_map(|id| repos.get(id))
             .cloned()
             .collect();
-        let mut member_groups = BTreeSet::new();
+        let mut course_codes = BTreeSet::new();
         for id in &sources {
-            let topology_groups = repos
-                .get(id)
-                .map(|value| string_array(value, "member_resource_group_ids"))
-                .unwrap_or_default();
-            if topology_groups.is_empty() {
-                if let Some(manifest) = self.manifest_repository(id) {
-                    member_groups.extend(string_array(manifest, "member_resource_group_ids"));
-                }
-            } else {
-                member_groups.extend(topology_groups);
-            }
+            course_codes.extend(string_array(&repos[id], "course_codes"));
             after_repos.remove(id);
         }
         let preserved = repos.get(target_repo_id);
@@ -2526,7 +2468,7 @@ impl Manager {
                 "repo_type":repo_type,
                 "display_name":display_name,
                 "physical_repository_id":physical_id,
-                "member_resource_group_ids":member_groups,
+                "course_codes":course_codes,
                 "lineage":{"kind":"merge","source_repo_ids":sources}
             }),
         );
@@ -2599,11 +2541,9 @@ impl Manager {
 
     fn plan_phase_with_journal(&self, plan: &Value, journal: Option<&Value>) -> String {
         let manifest = canonical_sha256(&self.manifest);
-        if plan
-            .pointer("/core/workspace_identity/manifest_sha256")
-            .and_then(Value::as_str)
-            != Some(manifest.as_str())
-        {
+        let before_manifest = plan.pointer("/core/workspace_identity/manifest_sha256").and_then(Value::as_str);
+        let after_manifest = plan.pointer("/after/manifest_sha256").and_then(Value::as_str);
+        if Some(manifest.as_str()) != before_manifest && Some(manifest.as_str()) != after_manifest {
             return "drifted".to_string();
         }
         let topology = canonical_sha256(&self.topology);
@@ -2621,13 +2561,13 @@ impl Manager {
             .and_then(|value| value.get("resolved_after_routes_sha256"))
             .and_then(Value::as_str)
             .or_else(|| plan.pointer("/after/routes_sha256").and_then(Value::as_str));
-        if Some(topology.as_str()) == before_topology && Some(routes.as_str()) == before_routes {
+        if Some(manifest.as_str()) == before_manifest && Some(topology.as_str()) == before_topology && Some(routes.as_str()) == before_routes {
             "before".to_string()
         } else if Some(topology.as_str()) == after_topology
             && Some(routes.as_str()) == before_routes
         {
             "topology-applied".to_string()
-        } else if Some(topology.as_str()) == after_topology && Some(routes.as_str()) == after_routes
+        } else if Some(manifest.as_str()) == after_manifest && Some(topology.as_str()) == after_topology && Some(routes.as_str()) == after_routes
         {
             "after".to_string()
         } else {
@@ -2882,17 +2822,11 @@ impl Manager {
                     .cloned()
                     .unwrap_or(Value::Null)
             });
-        if canonical_sha256(&read_json(&self.topology_path)?) != canonical_sha256(&after_topology) {
-            atomic_json(&self.topology_path, &after_topology)?;
-            add_stage(journal, "topology");
-            atomic_json(journal_path, journal)?;
-        }
-        if canonical_sha256(&read_json(&self.routes_path)?) != canonical_sha256(&effective_routes) {
-            atomic_json(&self.routes_path, &effective_routes)?;
-            add_stage(journal, "routes");
-            atomic_json(journal_path, journal)?;
-        }
+        self.require_current_workspace()?;
         validate_state(&after_topology, &effective_routes, false)?;
+        let after_manifest = plan.pointer("/after/manifest").context("计划缺少目标 manifest")?;
+        atomic_json_many(&[(&self.manifest_path, after_manifest), (&self.topology_path, &after_topology), (&self.routes_path, &effective_routes)])?;
+        add_stage(journal, "local-state");
         journal["status"] = json!("completed");
         journal["completed_at"] = json!(now());
         journal["updated_at"] = journal["completed_at"].clone();
@@ -3148,7 +3082,6 @@ impl Manager {
                 }
                 let binding = if let Some(old) = old_descriptor_by_code.get(&code) {
                     json!({
-                        "resource_group_id":string_field(old,"resource_group_id"),
                         "physical_repository_id":string_field(old,"physical_repository_id"),
                         "repo_id":string_field(old,"repo_id")
                     })
@@ -3259,10 +3192,6 @@ impl Manager {
                     object.insert("repo_id".to_string(), binding["repo_id"].clone());
                     object.insert("repo_type".to_string(), json!("course"));
                     object.insert(
-                        "resource_group_id".to_string(),
-                        binding["resource_group_id"].clone(),
-                    );
-                    object.insert(
                         "physical_repository_id".to_string(),
                         binding["physical_repository_id"].clone(),
                     );
@@ -3314,7 +3243,7 @@ impl Manager {
                 object.insert("course_name".to_string(), json!(name));
             }
             if let Some(binding) = binding {
-                for key in ["resource_group_id", "physical_repository_id", "repo_id"] {
+                for key in ["physical_repository_id", "repo_id"] {
                     object.insert(
                         key.to_string(),
                         binding.get(key).cloned().unwrap_or(Value::Null),
@@ -3386,7 +3315,6 @@ impl Manager {
                 .context("课程路由缺少历史绑定")?;
             let mut route = route_index.remove(code).unwrap_or_else(|| {
                 json!({
-                    "component_id":format!("course-code-{}", &canonical_sha256(&json!(code))[..20]),
                     "course_code":code,
                     "has_material":false
                 })
@@ -3528,14 +3456,13 @@ impl Manager {
         _name: &str,
         assignment: &CourseAssignment,
     ) -> Result<Value> {
-        let group_id = format!("course-code-{}", &canonical_sha256(&json!({"course_code":code}))[..20]);
         match assignment {
             CourseAssignment::Existing { repo_id } => {
                 if !self.valid_assignment_repository(repo_id) {
                     bail!("所选仓库不是可承载资料的活跃课程仓")
                 }
                 let repo = repositories(&self.topology)?.get(repo_id).context("所选仓库不存在")?;
-                Ok(json!({"resource_group_id":group_id,"physical_repository_id":string_field(repo,"physical_repository_id"),"repo_id":repo_id}))
+                Ok(json!({"physical_repository_id":string_field(repo,"physical_repository_id"),"repo_id":repo_id}))
             }
             CourseAssignment::New { title } | CourseAssignment::NewGroup { title, .. } => {
                 let title = normalize(title);
@@ -3552,7 +3479,7 @@ impl Manager {
                 if repositories(&self.topology)?.contains_key(&repo_id) || self.manifest_repository(&repo_id).is_some() {
                     bail!("新资料库身份已存在，请选择现有资料库")
                 }
-                Ok(json!({"resource_group_id":group_id,"physical_repository_id":format!("physical-managed-{}",&canonical_sha256(&json!({"repo_id":repo_id}))[..16]),"repo_id":repo_id,"display_name":title}))
+                Ok(json!({"physical_repository_id":format!("physical-managed-{}",&canonical_sha256(&json!({"repo_id":repo_id}))[..16]),"repo_id":repo_id,"display_name":title}))
             }
         }
     }
@@ -3596,14 +3523,10 @@ impl Manager {
         manifest: &mut Value,
         topology: &mut Value,
         bindings: &BTreeMap<String, Value>,
-        names: &BTreeMap<String, String>,
+        _names: &BTreeMap<String, String>,
         assignments: &BTreeMap<String, CourseAssignment>,
     ) -> Result<()> {
         let object = manifest.as_object_mut().context("manifest 格式无效")?;
-        let mut groups = object
-            .remove("resource_groups")
-            .and_then(|value| value.as_array().cloned())
-            .context("manifest 缺少资源组")?;
         let manifest_repositories = object
             .get_mut("repositories")
             .and_then(Value::as_array_mut)
@@ -3614,13 +3537,6 @@ impl Manager {
             .context("topology 缺少 repositories")?;
         for (code, assignment) in assignments {
             let binding = &bindings[code];
-            let group_id = string_field(binding, "resource_group_id").to_string();
-            if groups
-                .iter()
-                .all(|group| string_field(group, "resource_group_id") != group_id)
-            {
-                groups.push(json!({"resource_group_id":group_id,"preferred_repo_id":binding["repo_id"],"display_name":names.get(code).cloned().unwrap_or_default(),"course_names":[names.get(code).cloned().unwrap_or_default()],"course_codes":[code],"grouping_rule":"explicit-course-code-assignment","evidence":"管理员在教学计划更新中明确裁决","legacy_units":[],"status":"mapped"}));
-            }
             let repo_id = string_field(binding, "repo_id").to_string();
             let title = match assignment {
                 CourseAssignment::New { title } | CourseAssignment::NewGroup { title, .. } => normalize(title),
@@ -3631,20 +3547,16 @@ impl Manager {
                 .find(|repo| string_field(repo, "repo_id") == repo_id)
             {
                 insert_unique_string(repo, "course_codes", code);
-                insert_unique_string(repo, "member_resource_group_ids", &group_id);
             } else {
-                manifest_repositories.push(json!({"repo_id":repo_id,"repo_type":"course","display_name":title,"physical_repository_id":binding["physical_repository_id"],"course_codes":[code],"member_resource_group_ids":[group_id],"lineage":{"kind":"curriculum-explicit-assignment","source_repo_ids":[]}}));
+                manifest_repositories.push(json!({"repo_id":repo_id,"repo_type":"course","display_name":title,"physical_repository_id":binding["physical_repository_id"],"course_codes":[code],"lineage":{"kind":"curriculum-explicit-assignment","source_repo_ids":[]}}));
             }
             if let Some(repo) = topology_repositories.get_mut(&repo_id) {
                 insert_unique_string(repo, "course_codes", code);
-                insert_unique_string(repo, "member_resource_group_ids", &group_id);
             } else {
-                topology_repositories.insert(repo_id.clone(), json!({"repo_id":repo_id,"repo_type":"course","display_name":title,"physical_repository_id":binding["physical_repository_id"],"course_codes":[code],"member_resource_group_ids":[group_id],"lineage":{"kind":"curriculum-explicit-assignment","source_repo_ids":[]}}));
+                topology_repositories.insert(repo_id.clone(), json!({"repo_id":repo_id,"repo_type":"course","display_name":title,"physical_repository_id":binding["physical_repository_id"],"course_codes":[code],"lineage":{"kind":"curriculum-explicit-assignment","source_repo_ids":[]}}));
             }
         }
-        groups.sort_by_key(|value| string_field(value, "resource_group_id").to_string());
         manifest_repositories.sort_by_key(|value| string_field(value, "repo_id").to_string());
-        object.insert("resource_groups".to_string(), json!(groups));
         Ok(())
     }
 }
@@ -4482,7 +4394,6 @@ fn refresh_curriculum_metadata(manifest: &mut Value) -> Result<()> {
     let record_count = array_at(manifest, "curriculum_records")?.len();
     let descriptor_count = array_at(manifest, "course_descriptors")?.len();
     let uncoded_count = array_at(manifest, "curriculum_records")?.iter().filter(|record| string_field(record, "course_code").is_empty()).count();
-    let group_count = array_at(manifest, "resource_groups")?.len();
     let repositories = manifest.get_mut("repositories").and_then(Value::as_array_mut).context("manifest 缺少仓库")?;
     let mut repository_counts = BTreeMap::<String, usize>::new();
     for repository in repositories.iter_mut() {
@@ -4498,7 +4409,7 @@ fn refresh_curriculum_metadata(manifest: &mut Value) -> Result<()> {
     let repository_count = repositories.len();
     let object = manifest.as_object_mut().context("manifest 不是对象")?;
     let summary = object.entry("summary").or_insert_with(|| json!({})).as_object_mut().context("summary 不是对象")?;
-    for (key, count) in [("repository_count",repository_count),("resource_group_count",group_count),
+    for (key, count) in [("repository_count",repository_count),
         ("course_descriptor_count",descriptor_count),("curriculum_record_count",record_count),
         ("curriculum_metadata_plan_count",plan_count),("curriculum_metadata_record_count",record_count),
         ("curriculum_metadata_pending_course_code_record_count",uncoded_count)] {
@@ -5076,6 +4987,77 @@ fn plan_identity_sha256(plan: &Value) -> String {
     canonical_sha256(&payload)
 }
 
+fn reserve_target_path(path: &str, occupied: &mut HashSet<String>) -> Result<String> {
+    safe_path(path)?;
+    let key = path.to_lowercase();
+    if occupied.iter().any(|other| other == &key || other.starts_with(&format!("{key}/")) || key.starts_with(&format!("{other}/"))) {
+        bail!("目标路径“{path}”冲突；请先明确重命名源文件并重新清点，再预览操作。")
+    }
+    occupied.insert(key);
+    Ok(path.to_string())
+}
+fn manifest_for_routes(before: &Value, topology: &Value, routes: &Value) -> Result<Value> {
+    let mut manifest = before.clone();
+    let bindings: BTreeMap<_, _> = array_at(routes, "course_code_routes")?.iter()
+        .map(|route| (string_field(route, "course_code").to_string(), route)).collect();
+    for field in ["course_descriptors", "curriculum_records"] {
+        if let Some(records) = manifest.get_mut(field).and_then(Value::as_array_mut) {
+            for record in records {
+                let code = string_field(record, "course_code");
+                if code.is_empty() { continue; }
+                let route = bindings.get(code).with_context(|| format!("课程 {code} 缺少直接路由"))?;
+                record["repo_id"] = route["repo_id"].clone();
+                record["physical_repository_id"] = route["physical_repository_id"].clone();
+                if record.get("attachment_repo_id").is_some() { record["attachment_repo_id"] = route["repo_id"].clone(); }
+            }
+        }
+    }
+    let old: BTreeMap<_, _> = array_at(before, "repositories")?.iter()
+        .map(|repo| (string_field(repo, "repo_id"), repo)).collect();
+    let mut result = Vec::new();
+    for (id, topology_repo) in repositories(topology)? {
+        let mut repo = old.get(id.as_str()).map(|value| Value::clone(value)).unwrap_or_else(|| json!({}));
+        for (key, value) in topology_repo.as_object().context("仓库索引无效")? { repo[key] = value.clone(); }
+        let mapping: BTreeMap<_, _> = array_at(&manifest, "course_descriptors")?.iter()
+            .filter(|descriptor| string_field(descriptor, "repo_id") == id)
+            .map(|descriptor| (string_field(descriptor, "course_code").to_string(), string_field(descriptor, "course_name").to_string())).collect();
+        repo["course_names"] = json!(mapping.values().collect::<BTreeSet<_>>());
+        match string_field(&repo, "repo_type") {
+            "course" => repo["description"] = json!(crate::repository_metadata::description(string_field(&repo, "display_name"), &mapping)?),
+            "shared" | "competition" => repo["description"] = repo["display_name"].clone(),
+            _ => {}
+        }
+        result.push(repo);
+    }
+    manifest["repositories"] = json!(result);
+    if manifest.get("files").is_some() { manifest["files"] = routes["files"].clone(); }
+    if manifest.get("course_code_routes").is_some() { manifest["course_code_routes"] = routes["course_code_routes"].clone(); }
+    if let Some(summary) = manifest.get_mut("summary").and_then(Value::as_object_mut) {
+        summary.insert("repository_count".into(), json!(repositories(topology)?.len()));
+    }
+    Ok(manifest)
+}
+
+fn validate_direct_manifest(manifest: &Value) -> Result<()> {
+    if manifest.get("resource_groups").is_some() { bail!("旧资源组 manifest 已停止支持，请先完成正式数据切换。") }
+    for field in ["repositories", "course_descriptors", "curriculum_records", "course_code_routes", "files"] {
+        if let Some(rows) = manifest.get(field).and_then(Value::as_array) {
+            for row in rows {
+                reject_resource_partition_fields(row)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reject_resource_partition_fields(value: &Value) -> Result<()> {
+    for key in ["resource_group_id", "member_resource_group_ids", "component_id"] {
+        if value.get(key).is_some() { bail!("当前直接仓库模型不接受旧字段 {key}，请完成正式数据切换。") }
+    }
+    Ok(())
+}
+
+
 fn validate_state(topology: &Value, routes: &Value, allow_unresolved: bool) -> Result<()> {
     let topology_version = topology
         .get("schema_version")
@@ -5092,26 +5074,40 @@ fn validate_state(topology: &Value, routes: &Value, allow_unresolved: bool) -> R
     }
     let repos = repositories(topology)?;
     let mut physical = HashSet::new();
-    let mut group_owner = HashMap::new();
+    let mut course_owner = HashMap::new();
     for (key, repo) in repos {
+        reject_resource_partition_fields(repo)?;
         safe_repo_id(key)?;
         if string_field(repo, "repo_id") != key {
             bail!("资料索引键不一致")
         }
         let physical_id = string_field(repo, "physical_repository_id");
-        if physical_id.is_empty() || !physical.insert(physical_id.to_string()) {
+        if !matches!(string_field(repo, "repo_type"), "control" | "template")
+            && (physical_id.is_empty() || !physical.insert(physical_id.to_string())) {
             bail!("资料物理身份缺失或重复")
         }
-        for group in string_array(repo, "member_resource_group_ids") {
-            if let Some(prior) = group_owner.insert(group.clone(), key.clone()) {
-                if prior != *key {
-                    bail!("课程资料组同时属于多个仓库")
-                }
+        for code in string_array(repo, "course_codes") {
+            if course_owner.insert(code, key.as_str()).is_some() {
+                bail!("完整课程代码重复归属仓库")
             }
         }
     }
+    let mut routed_codes = HashSet::new();
+    for route in array_at(routes, "course_code_routes")? {
+        reject_resource_partition_fields(route)?;
+        let code = string_field(route, "course_code");
+        let repo_id = string_field(route, "repo_id");
+        if code.is_empty() || !routed_codes.insert(code) || course_owner.get(code).copied() != Some(repo_id) {
+            bail!("课程代码路由必须与唯一仓库归属一致：{code}")
+        }
+        if string_field(route, "physical_repository_id") != string_field(&repos[repo_id], "physical_repository_id") {
+            bail!("课程代码 {code} 的物理仓库身份不一致")
+        }
+    }
+    if routed_codes.len() != course_owner.len() { bail!("仓库课程代码缺少直接路由") }
     let mut paths = HashSet::new();
     for file in array_at(routes, "files")? {
+        reject_resource_partition_fields(file)?;
         let repo_id = string_field(file, "repo_id");
         let path = string_field(file, "path");
         safe_repo_id(repo_id)?;
@@ -5121,6 +5117,11 @@ fn validate_state(topology: &Value, routes: &Value, allow_unresolved: bool) -> R
         }
         if !paths.insert((repo_id.to_lowercase(), path.to_lowercase())) {
             bail!("同一份资料中存在重复文件路径")
+        }
+        for code in string_array(file, "course_codes") {
+            if course_owner.get(&code).copied() != Some(repo_id) {
+                bail!("文件 {path} 的课程代码 {code} 属于其他仓库")
+            }
         }
     }
     let complete: BTreeSet<_> = string_array(routes, "inventory_complete_repositories")
@@ -5613,36 +5614,6 @@ mod tests {
 #[path = "native_manager_tests.rs"]
 mod native_manager_tests;
 
-#[cfg(test)]
-mod real_workspace_tests {
-    use super::*;
-
-    #[test]
-    fn real_workspace_exposes_chinese_split_options_without_internal_input() {
-        let mut manager = Manager::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."));
-        manager.reload().unwrap();
-        let options = manager.split_options("COURSES-RA-531F0B625E8A").unwrap();
-        assert_eq!(options.source_title, "材料科学与工程学院");
-        assert_eq!(options.groups.len(), 6);
-        assert!(options
-            .groups
-            .iter()
-            .any(|group| group.title == "材料热力学"));
-        assert!(options
-            .groups
-            .iter()
-            .all(|group| !group.title.starts_with("exact-name-")));
-        assert_eq!(
-            options
-                .groups
-                .iter()
-                .map(|group| group.file_count)
-                .sum::<usize>()
-                + options.loose_files.len(),
-            10
-        );
-    }
-}
 
 #[cfg(test)]
 mod curriculum_rebuild_tests {
@@ -5657,18 +5628,14 @@ mod curriculum_rebuild_tests {
             "organization":"LOCAL",
             "repositories":[{
                 "repo_id":"COURSE-A","repo_type":"course","display_name":"计算机学院 / 无资料课程",
-                "physical_repository_id":"physical-a","member_resource_group_ids":["group-a"],
+                "physical_repository_id":"physical-a","course_codes":["A1"],
                 "materialization_kind":"empty-course-code-college-bucket"
-            }],
-            "resource_groups":[{
-                "resource_group_id":"group-a","display_name":"程序设计","course_names":["程序设计"],
-                "course_codes":["A1"],"grouping_rule":"exact-normalized-course-name"
             }],
             "curriculum_plans":[{"plan_id":"plan-a","source_kind":"curriculum","plan_version":"2022版","department_code":"01","major_code":"CS","major_name":"计算机科学与技术","school_name":"计算机学院"}],
             "curriculum_records":[{"record_id":"REC-OLD","source_plan":"plan-a","source_ordinal":0,"course_code":"A1","course_name":"程序设计","credit":3}],
             "course_descriptors":[{
                 "descriptor_id":"course-code:A1","course_code":"A1","course_name":"程序设计",
-                "resource_group_id":"group-a","physical_repository_id":"physical-a","repo_id":"COURSE-A",
+                "physical_repository_id":"physical-a","repo_id":"COURSE-A",
                 "record_ids":["REC-OLD"]
             }],
             "curriculum_metadata_indexes":{"by_plan":{},"pending_course_code":[]},
@@ -5676,11 +5643,11 @@ mod curriculum_rebuild_tests {
         });
         let topology = json!({
             "schema_version":1,"generation":1,"organization":"LOCAL",
-            "repositories":{"COURSE-A":{"repo_id":"COURSE-A","repo_type":"course","display_name":"计算机学院 / 无资料课程","physical_repository_id":"physical-a","member_resource_group_ids":["group-a"],"lineage":{"kind":"fixture","source_repo_ids":[]}}}
+            "repositories":{"COURSE-A":{"repo_id":"COURSE-A","repo_type":"course","display_name":"计算机学院 / 无资料课程","physical_repository_id":"physical-a","course_codes":["A1"],"lineage":{"kind":"fixture","source_repo_ids":[]}}}
         });
         let routes = json!({
             "schema_version":1,"generation":1,"inventory_complete_repositories":[],"repository_heads":{},"files":[],
-            "course_code_routes":[{"component_id":"old-a","course_code":"A1","has_material":false,"physical_repository_id":"physical-a","repo_id":"COURSE-A"}]
+            "course_code_routes":[{"course_code":"A1","has_material":false,"physical_repository_id":"physical-a","repo_id":"COURSE-A"}]
         });
         write_value(&workspace.join(DEFAULT_MANIFEST), &manifest);
         write_value(&workspace.join(DEFAULT_TOPOLOGY), &topology);
@@ -5740,7 +5707,6 @@ mod curriculum_rebuild_tests {
             .find(|value| value["course_code"] == "A2")
             .unwrap();
         assert_eq!(a2["repo_id"], "COURSE-A");
-        assert_ne!(a2["resource_group_id"], "group-a");
         assert_eq!(preview.routes["files"], json!([]));
     }
 
@@ -6345,3 +6311,75 @@ mod registry_lifecycle_tests {
 #[cfg(test)]
 #[path = "state_update_tests.rs"]
 mod state_update_tests;
+fn repository_infrastructure(path: &str) -> bool {
+    matches!(path, "README.md" | "LICENSE" | "repository.toml" | ".gitattributes" | ".gitignore")
+        || path.starts_with(".github/")
+}
+
+fn root_metadata_kind(path: &str) -> Option<&'static str> {
+    match path.to_ascii_lowercase().as_str() {
+        "readme.md" | "readme" => Some("readme"),
+        "license" | "license.md" | "copying" => Some("license"),
+        _ => None,
+    }
+}
+
+fn source_dependency_boundaries(
+    object_repo: &Path,
+    head: &str,
+    tree: &BTreeMap<String, (String, String)>,
+    _manifest: &Value,
+) -> Result<Vec<BTreeSet<String>>> {
+    let markers = ["Cargo.toml", "package.json", "pyproject.toml", "setup.py", "go.mod"];
+    let mut roots = BTreeSet::new();
+    let mut result = Vec::new();
+    for path in tree.keys() {
+        let (parent, name) = path.rsplit_once('/').unwrap_or(("", path.as_str()));
+        if markers.contains(&name) { roots.insert(parent.to_string()); }
+        if name.ends_with(".exe") || name.ends_with(".dll") {
+            if let Some((package, "bin")) = parent.rsplit_once('/') { roots.insert(package.to_string()); }
+        }
+        if !name.to_ascii_lowercase().ends_with(".md") { continue; }
+        let content = run_git(object_repo, &["cat-file", "blob", &format!("{head}:{path}")], None, &[])?;
+        let mut references = Vec::new();
+        for part in content.split("](").skip(1) {
+            if let Some((target, _)) = part.split_once(')') { references.push(target.trim().trim_matches(['<', '>']).split_whitespace().next().unwrap_or("")); }
+        }
+        for quote in ["src=\"", "src='"] {
+            for part in content.split(quote).skip(1) {
+                if let Some(target) = part.split(quote.chars().last().unwrap()).next() { references.push(target); }
+            }
+        }
+        let base = url::Url::parse(&format!("https://repository.invalid/{path}"))?;
+        let mut boundary = BTreeSet::from([path.clone()]);
+        for reference in references {
+            if reference.is_empty() || reference.starts_with('#') || reference.starts_with('/') || reference.contains("://") || reference.starts_with("data:") { continue; }
+            let Ok(target) = base.join(reference) else { continue; };
+            let encoded = target.path().trim_start_matches('/').replace('+', "%2B");
+            let decoded = url::form_urlencoded::parse(format!("path={encoded}").as_bytes()).next().map(|(_, value)| value.into_owned()).unwrap_or_default();
+            if tree.contains_key(&decoded) { boundary.insert(decoded); }
+            else { boundary.extend(tree.keys().filter(|candidate| candidate.starts_with(&format!("{decoded}/"))).cloned()); }
+        }
+        if boundary.len() > 1 { result.push(boundary); }
+    }
+    for root in roots {
+        let boundary = tree.keys().filter(|path| root.is_empty() || path.starts_with(&format!("{root}/"))).cloned().collect::<BTreeSet<_>>();
+        if boundary.len() > 1 { result.push(boundary); }
+    }
+    Ok(result)
+}
+
+fn validate_resource_layout(manifest: &Value, routes: &Value) -> Result<()> {
+    let Some(layout) = manifest.pointer("/policy/resource_layout").and_then(Value::as_object) else { return Ok(()); };
+    if layout.get("allow_new_root_categories").and_then(Value::as_bool) != Some(false) { return Ok(()); }
+    let categories: HashSet<_> = layout.get("categories").and_then(Value::as_array).context("资料分类规则缺失")?
+        .iter().filter_map(Value::as_str).collect();
+    if categories.is_empty() { bail!("资料分类不得为空") }
+    for file in array_at(routes, "files")? {
+        let path = string_field(file, "path");
+        if repository_infrastructure(path) { continue; }
+        let Some((category, _)) = path.split_once('/') else { bail!("资料必须放入预设分类：{path}"); };
+        if !categories.contains(category) { bail!("不得自行新增根级分类：{category}") }
+    }
+    Ok(())
+}

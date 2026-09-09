@@ -2,7 +2,7 @@ use crate::jwts::{CandidatePlan, CandidateSnapshot};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use unicode_normalization::UnicodeNormalization;
@@ -778,7 +778,6 @@ pub(crate) fn canonical_course(course: &Value) -> Value {
             "source_path",
             "repo_id",
             "repo_type",
-            "resource_group_id",
             "physical_repository_id",
             "descriptor_id",
             "attachment_repo_id",

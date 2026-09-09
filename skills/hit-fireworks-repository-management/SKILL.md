@@ -24,7 +24,7 @@ description: 管理 HIT-Fireworks 完整仓库生命周期，包括从 HIT 本�
 - 系统检查；
 - 退出。
 
-不得要求普通用户安装 Python/Rust、运行命令、输入 JSON、repo_id、resource_group_id、identity、commit/tree 或 APPLY/RESUME challenge。
+不得要求普通用户安装 Python/Rust、运行命令、输入 JSON、repo_id、identity、commit/tree 或 APPLY/RESUME challenge。
 
 ## 教务更新契约
 
@@ -43,10 +43,10 @@ description: 管理 HIT-Fireworks 完整仓库生命周期，包括从 HIT 本�
 
 ## 增量映射规则
 
-- 既有课程代码保留 resource group、physical repository 和 repo 绑定；
-- 新代码优先复用规范同名资源组；
-- 否则创建稳定资源组，并优先映射 offering college/school 对应无资料 bucket；
-- 无法归类才规划稳定 `MANAGED-*` 仓；
+- 完整课程代码直接且唯一绑定 physical repository 与 repo，保留已有绑定；
+- 新代码必须显式选择现有仓库或新建仓库，同名只作为审阅建议，不自动获得旧文件；
+- 仓库是唯一资源边界；拆分完整分配课程代码与文件，共享文件关联代码必须同仓；
+- 普通独立资料位于根目录，软件包/多文件文档保留真实结构；同路径冲突拒绝，不生成资源组或占位目录；
 - 移除代码不删除有资料仓；仅无文件且不再承载课程的仓进入归档预览；
 - course_code_routes、curriculum records/descriptors/indexes 必须全量一致。
 
@@ -71,7 +71,7 @@ indexes/pending-course-code.json
 
 ## Agent 与维护人员
 
-生产运行时为单一 Rust `Manager`；Python 仅离线生成、历史审计和行为 oracle。不得绕过 Manager 直接改 manifest/topology/routes 或调用 GitHub mutation。
+生产运行时为单一 Rust `Manager`。Python 管理 CLI 已撤下，生成/迁移脚本仅供冻结历史离线审计，不适用于当前 canonical 数据。不得绕过 Manager 直接改 manifest/topology/routes 或调用 GitHub mutation。`references/schema.md` 与 `references/mutation.md` 仅记录已退役 Python 协议，不是现行 API。
 
 关键接口：
 
@@ -81,6 +81,8 @@ indexes/pending-course-code.json
 - `plan_remote_sync` / `execute_remote_sync` / `verify_remote_sync`；
 - `update_journals` 与跨重启恢复；
 - split/merge plan/apply/resume/verify。
+- `SplitTarget { repo_id, display_name, course_codes, paths }`：每个代码恰好分配一次，无码文件显式指定路径，跨代码共享约束不能被显式路径覆盖；
+- split/merge 冻结并保留未清点源文件；无法确定去向或目标同名时拒绝。三份本地状态同步更新直接归属，history 保留原证据。
 
 ## 发行与验证
 
@@ -91,9 +93,6 @@ Windows ZIP 只能包含单一 Rust EXE、`启动薪火仓库管理.cmd`、说�
 ```sh
 cargo test --locked --manifest-path repository-tui/Cargo.toml
 cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --check
-python -m py_compile scripts/*.py tests/*.py
-python -m unittest tests/test_fireworks_manager_core.py
-python -m unittest tests/test_fireworks_manager_state_machine.py tests/test_repository_management.py
 ```
 
 Rust 测试必须覆盖模拟教务 HTTP 完整请求链、Cookie/认证、分页、差异决策、增量重建、Registry bare-remote、仓库生命周期、update journal 恢复、中文八项首页和 split/merge 状态机。

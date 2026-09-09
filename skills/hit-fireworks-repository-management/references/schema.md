@@ -1,5 +1,7 @@
 # JSON Schema 契约
 
+> 冻结历史协议：仅用于已退役 Python 实现的离线对照。当前 Rust Manager 不提供此 CommandEnvelope，生产调用见上级 SKILL.md；不得使用下文资源组参数修改现行数据。
+
 核心 schema 版本：`1`。未知主版本必须停止，不能猜测兼容。
 
 ## CommandEnvelope

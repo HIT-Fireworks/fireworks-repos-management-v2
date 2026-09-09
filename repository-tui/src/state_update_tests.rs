@@ -16,14 +16,13 @@ fn fixture() -> (TempDir, Manager) {
     ]);
     manager.manifest["course_descriptors"].as_array_mut().unwrap().push(json!({
         "descriptor_id":"course-code:OLD2","course_code":"OLD2","course_name":"旧课程",
-        "resource_group_id":"group-a","physical_repository_id":"physical-a","repo_id":"COURSE-A","record_ids":["REC-OLD2"]
+        "physical_repository_id":"physical-a","repo_id":"COURSE-A","record_ids":["REC-OLD2"]
     }));
-    manager.manifest["resource_groups"][0]["course_codes"] = json!(["A1", "OLD2"]);
     manager.manifest["repositories"][0]["course_codes"] = json!(["A1", "OLD2"]);
     manager.topology["repositories"]["COURSE-A"]["course_codes"] = json!(["A1", "OLD2"]);
     manager.routes["course_code_routes"][0]["has_material"] = json!(true);
     manager.routes["course_code_routes"].as_array_mut().unwrap().push(json!({
-        "component_id":"old-a","course_code":"OLD2","has_material":true,"physical_repository_id":"physical-a","repo_id":"COURSE-A"
+        "course_code":"OLD2","has_material":true,"physical_repository_id":"physical-a","repo_id":"COURSE-A"
     }));
     manager.routes["files"] = json!([{
         "repo_id":"COURSE-A","path":"notes/shared.pdf","course_codes":["A1","OLD2"],
@@ -144,7 +143,6 @@ fn changes_restore_assign_apply_and_repeat_without_losing_history_or_files() {
         .unwrap();
     assert_eq!(added["descriptor_id"], "course-code:NEW2");
     assert_eq!(added["repo_id"], "COURSE-A");
-    assert_ne!(added["resource_group_id"], "group-a");
     let old = descriptors
         .iter()
         .find(|d| d["course_code"] == "OLD2")
@@ -354,7 +352,6 @@ fn assignment_rejects_old_unknown_and_control_codes_and_preserves_distinct_new_n
     let new2 = codes.iter().find(|c| c["course_code"] == "NEW2").unwrap();
     let new3 = codes.iter().find(|c| c["course_code"] == "NEW3").unwrap();
     assert_ne!(new2["repo_id"], new3["repo_id"]);
-    assert_ne!(new2["resource_group_id"], new3["resource_group_id"]);
     let again = manager.materialize_curriculum_update(&mut session).unwrap();
     assert_eq!(preview.create_repositories, again.create_repositories);
 }
@@ -479,7 +476,6 @@ fn joint_preview_combines_disjoint_reviews_without_changing_production() {
     let b1 = descriptors.iter().find(|r| r["course_code"] == "B1").unwrap();
     let b2 = descriptors.iter().find(|r| r["course_code"] == "B2").unwrap();
     assert_eq!(b1["repo_id"], b2["repo_id"]);
-    assert_ne!(b1["resource_group_id"], b2["resource_group_id"]);
     assert!(manager.materialize_curriculum_updates(&mut [curriculum.clone(), curriculum]).is_err());
 }
 

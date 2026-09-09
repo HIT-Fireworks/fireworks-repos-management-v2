@@ -276,7 +276,7 @@ impl UiState {
             .enumerate()
             .filter_map(|(index, item)| {
                 (item.inventory_complete
-                    && (item.member_resource_group_ids.len() >= 2 || item.unowned_paths.len() >= 2))
+                    && item.course_codes.len() + item.unowned_paths.len() >= 2)
                     .then_some(index)
             })
             .collect()
@@ -929,7 +929,7 @@ impl UiState {
         let repo_id = self.dashboard.repositories[*index].repo_id.clone();
         match self.dashboard.client.split_options(&repo_id) {
             Ok(options) => {
-                if options.groups.len() + options.loose_files.len() < 2 {
+                if options.courses.len() + options.loose_files.len() < 2 {
                     self.notice = "这份资料没有足够的独立内容可拆分".to_string();
                     return;
                 }
@@ -945,7 +945,7 @@ impl UiState {
         let item_count = self
             .split_options
             .as_ref()
-            .map(|options| options.groups.len() + options.loose_files.len())
+            .map(|options| options.courses.len() + options.loose_files.len())
             .unwrap_or(2);
         let maximum = item_count.min(9).max(2);
         self.split_target_count = if increase {
@@ -959,7 +959,7 @@ impl UiState {
         let count = self
             .split_options
             .as_ref()
-            .map(|options| options.groups.len() + options.loose_files.len())
+            .map(|options| options.courses.len() + options.loose_files.len())
             .unwrap_or(0);
         self.split_assignments = vec![None; count];
         self.split_item_index = 0;
@@ -1001,7 +1001,7 @@ impl UiState {
         let options = self.split_options.as_ref().expect("split options");
         for target in 0..self.split_target_count {
             self.split_names[target] = options
-                .groups
+                .courses
                 .iter()
                 .enumerate()
                 .find(|(index, _)| self.split_assignments[*index] == Some(target))
@@ -1032,30 +1032,30 @@ impl UiState {
         let Some(options) = self.split_options.as_ref() else {
             return;
         };
-        let group_count = options.groups.len();
+        let course_count = options.courses.len();
         let mut targets = Vec::new();
         let mut review = vec![format!(
             "把“{}”拆成 {} 份资料",
             options.source_title, self.split_target_count
         )];
         for target_index in 0..self.split_target_count {
-            let group_ids = options
-                .groups
+            let course_codes = options
+                .courses
                 .iter()
                 .enumerate()
                 .filter(|(index, _)| self.split_assignments[*index] == Some(target_index))
-                .map(|(_, group)| group.internal_id.clone())
+                .map(|(_, course)| course.course_code.clone())
                 .collect::<Vec<_>>();
             let paths = options
                 .loose_files
                 .iter()
                 .enumerate()
                 .filter(|(index, _)| {
-                    self.split_assignments[group_count + *index] == Some(target_index)
+                    self.split_assignments[course_count + *index] == Some(target_index)
                 })
                 .map(|(_, file)| file.internal_path.clone())
                 .collect::<Vec<_>>();
-            let mut semantic_keys = group_ids.clone();
+            let mut semantic_keys = course_codes.clone();
             semantic_keys.extend(paths.iter().map(|path| format!("file:{path}")));
             let repo_id = if target_index == 0 {
                 options.source_repo_id.clone()
@@ -1065,15 +1065,15 @@ impl UiState {
                     .automatic_repo_id(&self.split_names[target_index], &semantic_keys)
             };
             review.push(format!(
-                "“{}”：{} 个课程组，{} 个零散文件",
+                "“{}”：{} 个课程代码，{} 个独立文件",
                 self.split_names[target_index],
-                group_ids.len(),
+                course_codes.len(),
                 paths.len()
             ));
             targets.push(SplitTarget {
                 repo_id,
                 display_name: self.split_names[target_index].clone(),
-                resource_group_ids: group_ids,
+                course_codes,
                 paths,
             });
         }
@@ -2163,7 +2163,7 @@ fn draw_split_sources(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
         let item = &state.dashboard.repositories[candidates[index]];
         Row::new([
             item.display_name.clone(),
-            format!("{} 个课程组", item.member_resource_group_ids.len()),
+            format!("{} 个课程代码", item.course_codes.len()),
             format!("{} 个文件", item.file_count),
         ])
         .style(selected_style(index == state.split_repo_index))
@@ -2223,14 +2223,18 @@ fn draw_split_assign(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
             ])
             .style(selected_style(index == state.split_item_index));
         }
-        let (title, detail) = if index < options.groups.len() {
-            let group = &options.groups[index];
+        let (title, detail) = if index < options.courses.len() {
+            let course = &options.courses[index];
             (
-                group.title.clone(),
-                format!("{} 个文件 · {}", group.file_count, human_bytes(group.bytes)),
+                format!("{} · {}", course.course_code, course.title),
+                if course.shared_course_codes.is_empty() {
+                    format!("{} 个文件 · {}", course.file_count, human_bytes(course.bytes))
+                } else {
+                    format!("{} 个文件 · 须与 {} 同仓", course.file_count, course.shared_course_codes.join("、"))
+                },
             )
         } else {
-            let file = &options.loose_files[index - options.groups.len()];
+            let file = &options.loose_files[index - options.courses.len()];
             (file.title.clone(), human_bytes(file.size))
         };
         let assignment = state.split_assignments[index]
@@ -2247,7 +2251,7 @@ fn draw_split_assign(frame: &mut Frame<'_>, area: Rect, state: &UiState) {
                 Constraint::Percentage(20),
             ],
         )
-        .header(Row::new(["课程组或文件", "内容", "放到哪里"]))
+        .header(Row::new(["课程代码或文件", "内容与共享约束", "放到哪里"]))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -2534,7 +2538,7 @@ mod tests {
                     repo_type: "course".into(),
                     inventory_complete: true,
                     file_count: 3,
-                    member_resource_group_ids: vec!["g1".into(), "g2".into()],
+                    course_codes: vec!["A1".into(), "B1".into()],
                     ..RepositorySummary::default()
                 },
                 RepositorySummary {

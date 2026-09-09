@@ -1166,4 +1166,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit("此 Python 入口已冻结，仅保留历史离线行为对照。请使用薪火仓库管理 Rust EXE；禁止用旧模型写入当前数据。")

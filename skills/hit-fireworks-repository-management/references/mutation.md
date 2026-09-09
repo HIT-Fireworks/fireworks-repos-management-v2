@@ -1,5 +1,7 @@
 # Mutation 变更门禁
 
+> 冻结历史协议：下文 execute.apply/execute.resume JSON 入口已撤下。当前生产变更使用 Rust Manager 的预览、确认与 journal 恢复流程，不能照此文调用旧 Python 写入当前数据。
+
 远端 mutation 只允许通过核心 `execute.apply` 或 `execute.resume`。TUI、Skill 和普通 CLI 不直接调用 GitHub API，不直接改写 manifest、topology、routes。
 
 ## Apply 流程

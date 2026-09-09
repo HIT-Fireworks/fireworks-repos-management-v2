@@ -2876,4 +2876,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit("此 Python 管理入口已撤下，仅保留历史离线行为对照。请使用薪火仓库管理 Rust EXE；旧 bootstrap/split/merge/apply 不适用于当前直接仓库模型。")

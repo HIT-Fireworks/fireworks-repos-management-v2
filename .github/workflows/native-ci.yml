@@ -1,0 +1,31 @@
+name: Native manager checks
+on:
+  pull_request:
+    paths:
+      - 'repository-tui/**'
+      - 'scripts/validate-registry.py'
+      - 'scripts/package-windows.py'
+      - '.github/workflows/native-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: repository-tui
+      - run: cargo test --locked --manifest-path repository-tui/Cargo.toml
+      - name: Check distributed snapshot
+        run: python3 scripts/validate-registry.py --root .
+      - name: Exercise native runtime
+        run: cargo run --quiet --locked --manifest-path repository-tui/Cargo.toml -- --check

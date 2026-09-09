@@ -1,58 +1,51 @@
 name: Build Windows repository manager
-
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "manager-v*"
-
+    tags: ['manager-v*']
 permissions:
-  contents: write
-
+  contents: read
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Run native Rust tests
-        run: cargo test --locked --manifest-path repository-tui/Cargo.toml
-      - name: Build single executable
-        run: cargo build --release --locked --manifest-path repository-tui/Cargo.toml
-      - name: Assemble no-code package
-        shell: pwsh
-        run: |
-          $package = "dist/薪火仓库管理-Windows"
-          New-Item -ItemType Directory -Force "$package/config", "$package/data" | Out-Null
-          Copy-Item "repository-tui/target/release/repository-tui.exe" "$package/薪火仓库管理.exe"
-          Copy-Item "启动薪火仓库管理.cmd" "$package/启动薪火仓库管理.cmd"
-          Copy-Item "config/repository-topology.v4.json" "$package/config/repository-topology.v4.json"
-          Copy-Item "config/repository-file-routes.v4.json" "$package/config/repository-file-routes.v4.json"
-          Copy-Item "data/repository-manifest.no-collection.v4.json" "$package/data/repository-manifest.no-collection.v4.json"
-          foreach ($directory in @("data", "config")) {
-            $shards = "$directory/.fireworks-json"
-            if (Test-Path $shards) {
-              Copy-Item $shards "$package/$directory/.fireworks-json" -Recurse
-            }
-          }
-          @"
-          薪火仓库管理
-
-          1. 完整解压 ZIP。
-          2. 双击“启动薪火仓库管理.cmd”。
-          3. 使用方向键选择，Enter 确认，Esc 返回。
-
-          查看仓库和现有数据完全离线可用。
-          更新教务数据时，程序会打开独立的 Microsoft Edge 或 Google Chrome 登录窗口；无需复制 Cookie。专用登录状态由浏览器保存在本机应用数据目录，不读取日常浏览器配置，也不另存明文 Cookie。
-          同步 Registry 或远端仓库时，系统检查页会提示是否需要 Git 或 GitHub 登录。
-          "@ | Set-Content -Encoding utf8 "$package/请先看我.txt"
-          Compress-Archive -Path "$package/*" -DestinationPath "dist/fireworks-repository-manager-windows.zip" -Force
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: repository-tui
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: cargo test --locked --manifest-path repository-tui/Cargo.toml
+      - run: cargo build --release --locked --manifest-path repository-tui/Cargo.toml
+      - name: Package and verify complete snapshot
+        run: python scripts/package-windows.py
       - uses: actions/upload-artifact@v5
         with:
-          name: 薪火仓库管理-Windows
+          name: windows-manager
           path: dist/fireworks-repository-manager-windows.zip
-      - name: Attach package to tagged release
-        if: startsWith(github.ref, 'refs/tags/')
+          retention-days: 7
+  publish:
+    if: startsWith(github.ref, 'refs/tags/manager-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-manager
+      - name: Publish tagged package
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" "dist/fireworks-repository-manager-windows.zip" --generate-notes --title "薪火仓库管理 ${{ github.ref_name }}"
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" fireworks-repository-manager-windows.zip --verify-tag --generate-notes --title "薪火仓库管理 $TAG"
